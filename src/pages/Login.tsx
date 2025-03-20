@@ -39,7 +39,7 @@ export default function Login() {
     }
 
     // Validate password
-    if (password.length < 6) {
+    if (password.length < 4) {
       newErrors.password = "Mật khẩu không hợp lệ";
     }
 
@@ -57,7 +57,16 @@ export default function Login() {
       });
       return;
     }
-    navigate("/meeting-room");
+    console.log(response);
+    if (response.isAuthenticated && response.user.role === "ROLE_ADMIN") {
+      navigate("/dashboard");
+    } else if (response.isAuthenticated) {
+      navigate("/meeting-room");
+    } else {
+      setError({
+        genaral: "Tài khoản hoặc mật khẩu không chính xác",
+      });
+    }
   };
 
   return (

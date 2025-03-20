@@ -26,9 +26,7 @@ export const SocketProvider = (props: SocketProviderProps) => {
       connectHeaders: {
         Authorization: `Bearer ${localStorage.getItem("token")}`,
       },
-      debug: (str) => {
-        console.log("STORM", str);
-      },
+      debug: (str) => console.log(str),
       reconnectDelay: 5000,
     });
 

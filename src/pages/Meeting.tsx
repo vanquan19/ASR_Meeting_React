@@ -11,12 +11,21 @@ import {
   TabsTrigger,
 } from "../components/ui/tabs";
 import { useMediaQuery } from "../hooks/use-media-query";
-import { useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 
 import { useLocation } from "react-router-dom";
 import { useSocket } from "../context/SocketContext";
 import { Message } from "@stomp/stompjs";
 import peer from "../services/peerService";
+import { UserType } from "../interface/auth";
+
+interface Participant {
+  user: UserType;
+  stream: MediaStream;
+  isCameraEnabled: boolean;
+  isMicEnabled: boolean;
+  isScreenSharing: boolean;
+}
 
 export default function Meeting() {
   const meetingCode =
@@ -32,57 +41,142 @@ export default function Meeting() {
   const [activeSpeaker, setActiveSpeaker] = useState("user1");
   const [sidebarTab, setSidebarTab] = useState<"chat" | "participants">("chat");
   const isMobile = useMediaQuery("(max-width: 768px)");
-  const [remoteSocketId, setRemoteSocketId] = useState<string | null>(null);
-  const [mystream, setMystream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream[] | null>([]);
-  const [participants, setParticipants] = useState<unknown[]>([]);
+  const [remoteSocketId, setRemoteSocketId] = useState<string[] | null>([]);
+  const [mystream, setMystream] = useState<Participant | null>(null);
+  const [remoteStream, setRemoteStream] = useState<Participant[] | null>([]);
+  const [myProfile, setMyProfile] = useState<UserType | null>(null);
 
-  const handleUserJoin = useCallback((data: Message) => {
-    console.log("User Join =>", data);
-    const dataBody = JSON.parse(data.body);
-    const { users, id } = dataBody;
-    console.log(users.name, " Join room");
-    setRemoteSocketId(id);
-  }, []);
+  const participants = [
+    {
+      id: "user1",
+      name: "You",
+      isSpeaking: false,
+      isMuted: !micEnabled,
+      isScreenSharing: false,
+      avatar: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: "user2",
+      name: "John Doe",
+      isSpeaking: true,
+      isMuted: false,
+      isScreenSharing: false,
+      avatar: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: "user3",
+      name: "Jane Smith",
+      isSpeaking: false,
+      isMuted: true,
+      isScreenSharing: isScreenSharing,
+      avatar: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: "user4",
+      name: "Alex Johnson",
+      isSpeaking: false,
+      isMuted: false,
+      isScreenSharing: false,
+      avatar: "/placeholder.svg?height=100&width=100",
+    },
+    {
+      id: "user5",
+      name: "Sarah Williams",
+      isSpeaking: false,
+      isMuted: true,
+      isScreenSharing: false,
+      avatar: "/placeholder.svg?height=100&width=100",
+    },
+  ];
 
-  const handleUserCall = useCallback(async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-    const offer = await peer.getOffer();
-    console.log("Offer =>", offer);
-    socket.publish({
-      destination: "/app/user-call",
-      body: JSON.stringify({
-        offer,
-        to: remoteSocketId,
-      }),
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    });
-    setMystream(stream);
-  }, [remoteSocketId, socket]);
-
-  const handleIncomingCall = useCallback(
-    async (data: Message) => {
-      console.log("Incoming call =>", data);
-      const dataBody = JSON.parse(data.body);
-      const { offer, from } = dataBody;
-      setRemoteSocketId(from);
+  const handleUserCall = useCallback(
+    async (user: UserType) => {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: true,
         audio: true,
       });
-      setMystream(stream);
-      console.log("Incoming call =>", from, offer);
+      const offer = await peer.getOffer();
+      console.log("Offer =>", offer);
+
+      //gui offer toi nguoi danh sach nguoi dung tham gia
+      socket.publish({
+        destination: "/app/user-call",
+        body: JSON.stringify({
+          offer,
+          meetingCode,
+        }),
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+
+      //set stream cho minh de hien thi video
+      setMystream({
+        user,
+        stream,
+        isCameraEnabled: isTurnOnCamera,
+        isMicEnabled: false,
+        isScreenSharing: false,
+      });
+      setMyProfile(user);
+    },
+    [isTurnOnCamera, meetingCode, socket]
+  );
+
+  //Nhan thong tin nguoi dung tham gia
+  const handleUserJoin = useCallback(
+    (data: Message) => {
+      const dataBody = JSON.parse(data.body);
+      console.log("User Join =>", dataBody);
+      const { users, id } = dataBody;
+      console.log(users.name, " Join room");
+      //gan tat ca nguoi tham gia vao danh sach remote
+      setRemoteSocketId((prev) => [...(prev || []), id]);
+      handleUserCall(users);
+    },
+    [handleUserCall]
+  );
+
+  //xu ly offer tu nguoi gui den
+  const handleIncomingCall = useCallback(
+    async (data: Message) => {
+      console.log("Incoming call =>", data);
+      const dataBody = JSON.parse(data.body);
+      const { offer, user, isM, isC, isS } = dataBody;
+      //lay stream tu camera va mic
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      //them nguoi gui vao danh sach remote
+      setRemoteStream((prev) => [
+        ...(prev || []),
+        {
+          user,
+          stream,
+          isCameraEnabled: isC,
+          isMicEnabled: isM,
+          isScreenSharing: isS,
+        },
+      ]);
+
+      setMystream({
+        user: myProfile as UserType,
+        stream,
+        isCameraEnabled: isTurnOnCamera,
+        isMicEnabled: micEnabled,
+        isScreenSharing: isScreenSharing,
+      });
+
+      console.log("Incoming call =>", offer);
       const answer = await peer.getAnswer(offer);
+      //nguoi nhan chap nhan cuoc goi va gui lai offer cho nguoi gui
       socket.publish({
         destination: "/app/user-accept-call",
         body: JSON.stringify({
-          answer,
-          to: from,
+          offer: answer,
+          to: user.employeeCode,
         }),
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
@@ -92,124 +186,42 @@ export default function Meeting() {
     [socket]
   );
 
-  const sendStream = useCallback(() => {
-    if (mystream) {
-      for (const track of mystream.getTracks()) {
-        peer.peer.addTrack(track, mystream);
-      }
-    }
-  }, [mystream]);
-
-  const handeAcceptCall = useCallback(
-    (data: Message) => {
-      console.log("Accept call =>", data);
-      const dataBody = JSON.parse(data.body);
-      const { answer, from } = dataBody;
-      console.log("Accept call =>", from, answer);
-      sendStream();
-    },
-    [sendStream]
-  );
-
-  const handleNegoNeeded = useCallback(async () => {
-    const offer = await peer.getOffer();
-    socket.publish({
-      destination: "/app/user-nego-needed",
-      body: JSON.stringify({
-        offer,
-        to: remoteSocketId,
-      }),
-      headers: {
-        Authorization: `Bearer ${localStorage.getItem("token")}`,
-      },
-    });
-  }, [remoteSocketId, socket]);
-
-  useEffect(() => {
-    peer.peer.addEventListener("negotiationneeded", handleNegoNeeded);
-    return () => {
-      peer.peer.removeEventListener("negotiationneeded", handleNegoNeeded);
-    };
-  }, [handleNegoNeeded]);
-
-  const handleNegoNeedIncomming = useCallback(
-    async (data: Message) => {
-      const dataBody = JSON.parse(data.body);
-      const { offer, from } = dataBody;
-      const answer = await peer.getAnswer(offer);
-      socket.publish({
-        destination: "/app/user-nego-done",
-        body: JSON.stringify({
-          answer,
-          to: from,
-        }),
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      });
-    },
-    [socket]
-  );
-
-  const handleNegoNeedFinal = useCallback(async (data: Message) => {
+  //nguoi gui nhan lai offer tu nguoi nhan
+  const handeAcceptCall = useCallback((data: Message) => {
+    console.log("Accept call =>", data);
     const dataBody = JSON.parse(data.body);
-    const { answer } = dataBody;
-    await peer.setLocalDescription(answer);
+    const { answer, user, isM, isC, isS } = dataBody;
+
+    setRemoteStream((prev) => [
+      ...(prev || []),
+      {
+        user: user as UserType,
+        stream: answer,
+        isCameraEnabled: isC,
+        isMicEnabled: isM,
+        isScreenSharing: isS,
+      },
+    ]);
   }, []);
 
   useEffect(() => {
-    peer.peer.addEventListener("track", (event) => {
-      const remoteStream = event.streams;
-      console.log("Remote stream =>", remoteStream);
-      setRemoteStream((prev) => [...(prev || []), remoteStream[0]]);
-    });
-  }, []);
-
-  useEffect(() => {
-    socket.subscribe("/app/user-join", handleUserJoin);
-    handleUserCall();
+    socket.subscribe("/topic/room/" + meetingCode, handleUserJoin);
     socket.subscribe("/user/incoming-call", handleIncomingCall);
     socket.subscribe("/user/accept-call", handeAcceptCall);
-    socket.subscribe("/user/nego-needed", handleNegoNeedIncomming);
-    socket.subscribe("/user/nego-final", handleNegoNeedFinal);
 
     return () => {
-      socket.unsubscribe("/app/user-join");
+      socket.unsubscribe("/topic/room/" + meetingCode);
       socket.unsubscribe("/user/incoming-call");
       socket.unsubscribe("/user/accept-call");
-      socket.unsubscribe("/user/nego-needed");
-      socket.unsubscribe("/user/nego-final");
     };
   }, [
     handeAcceptCall,
     handleIncomingCall,
-    handleNegoNeedFinal,
-    handleNegoNeedIncomming,
     handleUserCall,
     handleUserJoin,
+    meetingCode,
     socket,
   ]);
-
-  //participant join room
-  useEffect(() => {
-    setParticipants([
-      {
-        id: "user1",
-        name: "uset1",
-        isSpeaking: false,
-        isMuted: micEnabled,
-        isScreenSharing: false,
-        avatar: "https://randomuser.me/api/portraits",
-        isCameraOn: isTurnOnCamera,
-        stream: mystream,
-        isMyself: true,
-      },
-    ]);
-  }, [mystream, remoteStream, micEnabled, isTurnOnCamera]);
-
-  //signal to the server that the user has joined the room
-
-  console.log("Meeting code:", meetingCode);
 
   // Simulate active speaker changes
   useEffect(() => {
@@ -243,8 +255,7 @@ export default function Meeting() {
         {/* Video grid */}
         <div className="flex-1 overflow-hidden">
           <VideoGrid
-            mystream={mystream}
-            remoteStream={remoteStream}
+            participants={participants}
             activeSpeaker={activeSpeaker}
             isScreenSharing={isScreenSharing}
           />

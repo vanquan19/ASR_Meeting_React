@@ -8,6 +8,8 @@ import MeetingRoom from "../pages/MeetingRoom";
 import Home from "../pages/Home";
 import Container from "../pages/Container";
 import Meeting from "../pages/Meeting";
+import DashboardPage from "../pages/admin/dashboard-page";
+import RootLayout from "../pages/admin/layout";
 
 const AppRoutes = () => {
   return (

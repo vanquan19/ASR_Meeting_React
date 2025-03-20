@@ -145,7 +145,7 @@ const PreviewJoinMeeting = ({
   // emit join meeting request
   const handleJoinMeeting = (meeting: MeetingType) => {
     socket.publish({
-      destination: "/app/join-room",
+      destination: "/app/join",
       body: JSON.stringify({
         meetingCode: meeting.meetingCode,
         isTurnOnCamera,
@@ -159,8 +159,8 @@ const PreviewJoinMeeting = ({
   const handleJoinRoom = useCallback(
     (data: Message) => {
       const dataBody = JSON.parse(data.body);
-      const { room, isC } = dataBody;
-      navigate(`/meeting?meeting=${room}&isC=${isC}`);
+      const { meetingCode, isTurnOnCamera } = dataBody;
+      navigate(`/meeting?meeting=${meetingCode}&isC=${isTurnOnCamera}`);
     },
     [navigate]
   );

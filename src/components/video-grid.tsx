@@ -12,12 +12,10 @@ interface Participant {
   isScreenSharing: boolean;
   avatar: string;
   isCameraOn: boolean;
-  stream: MediaStream;
-  isMyself: boolean;
 }
 
 interface VideoGridProps {
-  myStream: Participant;
+  // myStream: Participant;
   participants: Participant[];
   activeSpeaker: string;
   isScreenSharing: boolean;

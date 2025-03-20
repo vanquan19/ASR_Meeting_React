@@ -27,19 +27,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     ckeckToken();
   }, []);
 
-  const login = async (username: string, password: string) => {
+  interface LoginResponse {
+    isAuthenticated: boolean;
+    user: UserType;
+  }
+
+  const login = async (
+    username: string,
+    password: string
+  ): Promise<LoginResponse> => {
     const response = await loginService(username, password);
     console.log(response);
     // Kiểm tra nếu `response` không tồn tại hoặc `code` không phải 200
     if (!response || response.code !== 200) {
       console.error("Login failed:", response);
-      return false;
+      return {
+        isAuthenticated: false,
+        user: {} as UserType,
+      };
     }
     localStorage.setItem("token", response.result?.token || "");
     localStorage.setItem("user", JSON.stringify(response.result?.user));
     setIsAuthenticated(response.result?.authenticated || false);
     setUser(response.result?.user);
-    return true;
+    return {
+      isAuthenticated: true,
+      user: response.result?.user as UserType,
+    };
   };
 
   const logout = async () => {
