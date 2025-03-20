@@ -7,6 +7,7 @@ import Login from "../pages/Login";
 import MeetingRoom from "../pages/MeetingRoom";
 import Home from "../pages/Home";
 import Container from "../pages/Container";
+import Meeting from "../pages/Meeting";
 
 const AppRoutes = () => {
   return (
@@ -21,6 +22,7 @@ const AppRoutes = () => {
               <Route path="/meeting-room" element={<Container />}>
                 <Route index element={<MeetingRoom />} />
               </Route>
+              <Route path="/meeting" element={<Meeting />} />
             </Route>
           </Routes>
         </Suspense>

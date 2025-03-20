@@ -8,7 +8,7 @@ export default function Container() {
       <Navbar />
       <div className="flex gap-8">
         <Sidebar />
-        <div className="pt-6">
+        <div className="pt-6 mx-16 w-full">
           <Outlet />
         </div>
       </div>

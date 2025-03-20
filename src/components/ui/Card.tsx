@@ -17,21 +17,30 @@ export function CardContainer({
 export function Card({
   children,
   className,
-  key,
+  cardKey,
 }: {
   children: React.ReactNode;
   className?: string;
-  key?: string;
+  cardKey?: string;
 }) {
   return (
-    <div key={key} className={`bg-white p-4 shadow-md rounded-xl ${className}`}>
+    <div
+      key={cardKey}
+      className={`bg-white p-4 shadow-md rounded-xl ${className}`}
+    >
       {children}
     </div>
   );
 }
 
-export function CardContent({ children }: { children: React.ReactNode }) {
-  return <div className="p-4">{children}</div>;
+export function CardContent({
+  className,
+  children,
+}: {
+  className: string;
+  children: React.ReactNode;
+}) {
+  return <div className={`p-4 ${className}`}>{children}</div>;
 }
 
 export function CardHeader({ children }: { children: React.ReactNode }) {

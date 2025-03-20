@@ -1,4 +1,4 @@
-import { UserType } from "../context/AuthContext";
+import { UserType } from "../interface/auth";
 import fetchApi from "../utils/api";
 
 interface loginResponse {

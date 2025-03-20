@@ -1,35 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { checkAuth, logoutService } from "../services/authService";
 import { loginService } from "../services/authService";
-
-export interface UserType {
-  id: number;
-  address?: string;
-  bankName?: string;
-  bankNumber?: string;
-  degree?: string;
-  email: string;
-  dob?: string;
-  employeeCode?: string;
-  identification?: string;
-  name: string;
-  phoneNumber?: string;
-  role: string;
-  img?: string;
-  department?: {
-    id: number;
-    name: string;
-    departmentCode: string;
-  };
-}
-
-interface AuthContextType {
-  isAuthenticated: boolean;
-  user: UserType | undefined;
-  isLoaded: boolean;
-  login: (username: string, password: string) => Promise<boolean>;
-  logout: () => Promise<void>;
-}
+import { AuthContextType, UserType } from "../interface/auth";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 

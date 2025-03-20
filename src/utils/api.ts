@@ -1,4 +1,4 @@
-const API_BASE_URL:string = 'https://c2aa-118-70-127-9.ngrok-free.app/';
+const API_BASE_URL:string = 'http://localhost:8080/';
 
 
 interface fetchOptions extends RequestInit {

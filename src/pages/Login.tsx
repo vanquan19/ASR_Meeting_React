@@ -1,4 +1,4 @@
-import { Button } from "../components/ui/Button";
+import { Button } from "../components/ui/button.tsx";
 import {
   Card,
   CardContainer,
@@ -15,12 +15,7 @@ import { useState } from "react";
 import Validation from "../utils/validate.ts";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.tsx";
-
-interface ErrorValidateLogin {
-  username?: string;
-  password?: string;
-  genaral?: string;
-}
+import { ErrorValidateLogin } from "../interface/validate.ts";
 
 export default function Login() {
   const [username, setUsername] = useState<string>("");
