@@ -9,7 +9,11 @@ import Home from "../pages/Home";
 import Container from "../pages/Container";
 import Meeting from "../pages/Meeting";
 import DashboardPage from "../pages/admin/dashboard-page";
-import RootLayout from "../pages/admin/layout";
+import AdminLayout from "../pages/admin/layout";
+import RoomsPage from "../pages/admin/rooms-page";
+import AccountsPage from "../pages/admin/account-page";
+import MeetingsPage from "../pages/admin/meeting-page";
+import ProfilePage from "../pages/admin/profile-page";
 
 const AppRoutes = () => {
   return (
@@ -25,6 +29,13 @@ const AppRoutes = () => {
                 <Route index element={<MeetingRoom />} />
               </Route>
               <Route path="/meeting" element={<Meeting />} />
+              <Route path="/dashboard" element={<AdminLayout />}>
+                <Route index element={<DashboardPage />} />
+                <Route path="rooms" element={<RoomsPage />} />
+                <Route path="accounts" element={<AccountsPage />} />
+                <Route path="meetings" element={<MeetingsPage />} />
+                <Route path="profile" element={<ProfilePage />} />
+              </Route>
             </Route>
           </Routes>
         </Suspense>

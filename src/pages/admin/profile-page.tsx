@@ -24,16 +24,13 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "../../components/ui/avatar";
+import { useAuth } from "../../context/AuthContext";
+import { UserType } from "../../interface/auth";
 
 export default function ProfilePage() {
-  const [profile, setProfile] = useState({
-    name: "John Doe",
-    email: "john@example.com",
-    department: "Marketing",
-    position: "Manager",
-    phone: "+1 (555) 123-4567",
-    bio: "Marketing professional with 5+ years of experience in digital marketing and team management.",
-  });
+  const { user } = useAuth();
+  console.log(user);
+  const [profile, setProfile] = useState<UserType>(user as UserType);
 
   const [password, setPassword] = useState({
     current: "",
@@ -60,58 +57,72 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Profile</h1>
-        <p className="text-muted-foreground">
-          Manage your personal information and preferences
-        </p>
-      </div>
-
+    <div className="space-y-6 ">
       <div className="flex flex-col gap-6 md:flex-row">
         <Card className="w-full md:w-1/3">
-          <CardHeader>
-            <CardTitle>Your Profile</CardTitle>
-            <CardDescription>
-              Your personal information and photo
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center space-y-4">
-            <Avatar className="h-24 w-24">
-              <AvatarImage src="/placeholder.svg?height=96&width=96" />
+          <CardContent className="flex flex-col items-center space-y-4 p-8">
+            <Avatar className="size-2/3">
+              <AvatarImage src={user?.img || ""} />
               <AvatarFallback>JD</AvatarFallback>
             </Avatar>
             <div className="text-center">
-              <h3 className="text-lg font-medium">{profile.name}</h3>
-              <p className="text-sm text-muted-foreground">
-                {profile.position} at {profile.department}
+              <h3 className="text-lg font-bold uppercase mt-5">
+                {profile.name}
+              </h3>
+              <p className="text-base text-muted-foreground">
+                {profile.role === "ROLE_ADMIN"
+                  ? "Quản trị viên"
+                  : profile.role === "ROLE_EMPLOYEE"
+                  ? "Nhân viên"
+                  : "Thư ký"}{" "}
+                {profile.department && " tại " + profile.department?.name}
               </p>
             </div>
-            <Button variant="outline" className="w-full">
-              Change Photo
-            </Button>
+            <div className="text-left w-full flex flex-col gap-2">
+              <div className="flex gap-2">
+                <h3 className="text-base font-medium">MNV:</h3>
+                <p className="text-base text-muted-foreground">
+                  {profile.employeeCode}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <h3 className="text-base font-medium">Email:</h3>
+                <p className="text-base text-muted-foreground">
+                  {profile.email}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <h3 className="text-base font-medium">SĐT:</h3>
+                <p className="text-base text-muted-foreground">
+                  {profile.phoneNumber || "Chưa cập nhật"}
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <h3 className="text-base font-medium">Ngày sinh:</h3>
+                <p className="text-base text-muted-foreground">
+                  {profile.dob || "Chưa cập nhật"}
+                </p>
+              </div>
+            </div>
+            {/* <Button variant="outline" className="w-full">
+              
+            </Button> */}
           </CardContent>
         </Card>
 
         <div className="flex-1">
           <Tabs defaultValue="details">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="details">Profile Details</TabsTrigger>
-              <TabsTrigger value="password">Password</TabsTrigger>
+              <TabsTrigger value="details">Hồ sơ</TabsTrigger>
+              <TabsTrigger value="password">Mật khẩu</TabsTrigger>
             </TabsList>
             <TabsContent value="details" className="mt-4">
               <Card>
-                <CardHeader>
-                  <CardTitle>Profile Details</CardTitle>
-                  <CardDescription>
-                    Update your personal information
-                  </CardDescription>
-                </CardHeader>
                 <CardContent>
                   <form onSubmit={handleProfileUpdate}>
                     <div className="grid gap-4">
                       <div className="grid gap-2">
-                        <Label htmlFor="name">Full Name</Label>
+                        <Label htmlFor="name">Họ và tên</Label>
                         <Input
                           id="name"
                           value={profile.name}
@@ -131,58 +142,34 @@ export default function ProfilePage() {
                           }
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="grid gap-2">
-                          <Label htmlFor="department">Department</Label>
-                          <Input
-                            id="department"
-                            value={profile.department}
-                            onChange={(e) =>
-                              setProfile({
-                                ...profile,
-                                department: e.target.value,
-                              })
-                            }
-                            readOnly
-                          />
-                        </div>
-                        <div className="grid gap-2">
-                          <Label htmlFor="position">Position</Label>
-                          <Input
-                            id="position"
-                            value={profile.position}
-                            onChange={(e) =>
-                              setProfile({
-                                ...profile,
-                                position: e.target.value,
-                              })
-                            }
-                            readOnly
-                          />
-                        </div>
-                      </div>
+
                       <div className="grid gap-2">
                         <Label htmlFor="phone">Phone Number</Label>
                         <Input
                           id="phone"
-                          value={profile.phone}
+                          value={profile.phoneNumber}
                           onChange={(e) =>
-                            setProfile({ ...profile, phone: e.target.value })
+                            setProfile({
+                              ...profile,
+                              phoneNumber: e.target.value,
+                            })
                           }
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="bio">Bio</Label>
+                        <Label htmlFor="bio">Ngay sinh</Label>
                         <Input
                           id="bio"
-                          value={profile.bio}
+                          value={profile.dob}
                           onChange={(e) =>
-                            setProfile({ ...profile, bio: e.target.value })
+                            setProfile({ ...profile, dob: e.target.value })
                           }
                         />
                       </div>
                     </div>
-                    <Button className="mt-4">Save Changes</Button>
+                    <Button className="mt-4 bg-blue-400 text-white">
+                      Cap nhat mat khau
+                    </Button>
                   </form>
                 </CardContent>
               </Card>
@@ -190,9 +177,9 @@ export default function ProfilePage() {
             <TabsContent value="password" className="mt-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Change Password</CardTitle>
+                  <CardTitle>Thay doi mat khau</CardTitle>
                   <CardDescription>
-                    Update your password to keep your account secure
+                    Hay cap nhat mat khau cua ban de bao mat tai khoan
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -200,7 +187,7 @@ export default function ProfilePage() {
                     <div className="grid gap-4">
                       <div className="grid gap-2">
                         <Label htmlFor="current-password">
-                          Current Password
+                          Mat khau hien tai
                         </Label>
                         <Input
                           id="current-password"
@@ -215,7 +202,7 @@ export default function ProfilePage() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="new-password">New Password</Label>
+                        <Label htmlFor="new-password">Mat khau moi</Label>
                         <Input
                           id="new-password"
                           type="password"
@@ -227,7 +214,7 @@ export default function ProfilePage() {
                       </div>
                       <div className="grid gap-2">
                         <Label htmlFor="confirm-password">
-                          Confirm New Password
+                          Xac nhan mat khau moi
                         </Label>
                         <Input
                           id="confirm-password"
@@ -242,7 +229,9 @@ export default function ProfilePage() {
                         />
                       </div>
                     </div>
-                    <Button className="mt-4">Update Password</Button>
+                    <Button className="mt-4 bg-blue-400 text-white">
+                      Cap nhat mat khau
+                    </Button>
                   </form>
                 </CardContent>
               </Card>

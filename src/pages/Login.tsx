@@ -5,7 +5,7 @@ import {
   CardNote,
   CardParagraph,
   CardTitle,
-} from "../components/ui/Card";
+} from "../components/ui/card.tsx";
 import bgLogin from "../assets/images/bg_login.jpg";
 import logo from "../assets/images/Logo.png";
 import calendar from "../assets/images/calendar.png";
@@ -71,8 +71,8 @@ export default function Login() {
 
   return (
     <div className="flex items-center justify-center h-screen w-screen bg-blue-200/50">
-      <CardContainer className="grid-cols-5 w-full xl:mx-40 lg:mx-32 md:mx-24 sm:mx-16 mx-0">
-        <Card className="w-full shadow-none col-span-2">
+      <CardContainer className="grid-cols-5 w-full  xl:mx-40 lg:mx-32 md:mx-24 sm:mx-16 mx-0">
+        <Card className="w-full shadow-none col-span-2 border-none">
           <div className="">
             <div className="mb-8">
               <img src={logo} className="size-24" alt="logo" />
@@ -141,7 +141,7 @@ export default function Login() {
             </form>
           </div>
         </Card>
-        <Card className="w-full shadow-none col-span-3">
+        <Card className="w-full shadow-none col-span-3 border-none">
           <div
             className="bg-cover bg-center h-full w-full rounded-2xl relative"
             style={{ backgroundImage: `url(${bgLogin})` }}

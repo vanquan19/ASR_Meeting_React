@@ -1,83 +1,80 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
+import React from "react";
+import { NavLink } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { cn } from "../../lib/utils";
-import {
-  CalendarDays,
-  Home,
-  LogOut,
-  Settings,
-  Users,
-  Building2,
-  User,
-} from "lucide-react";
-import { Button } from "../ui/button";
+import { CalendarDays, Home, Users, Building2, User } from "lucide-react";
+import LogoutButton from "./LogoutButton";
 
 const routes = [
   {
-    label: "Dashboard",
+    label: "Tổng quan",
     icon: Home,
     href: "/dashboard",
+    role: "user",
   },
   {
-    label: "Meeting Rooms",
+    label: "Phòng họp",
     icon: Building2,
     href: "/dashboard/rooms",
+    role: "user",
   },
   {
-    label: "Accounts",
+    label: "Tài khoản",
     icon: Users,
     href: "/dashboard/accounts",
+    role: "manager",
   },
   {
-    label: "Meetings",
+    label: "Cuộc họp",
     icon: CalendarDays,
     href: "/dashboard/meetings",
+    role: "user",
   },
   {
-    label: "Profile",
+    label: "Trang cá nhân",
     icon: User,
     href: "/dashboard/profile",
-  },
-  {
-    label: "Settings",
-    icon: Settings,
-    href: "/dashboard/settings",
+    role: "user",
   },
 ];
 
-export default function Sidebar() {
-  const pathname = usePathname();
+const Sidebar: React.FC = () => {
+  const { hasPermission } = useAuth();
 
   return (
-    <div className="flex h-full w-64 flex-col border-r bg-background">
-      <div className="flex h-14 items-center border-b px-4">
-        <h1 className="text-lg font-semibold">Meeting Room Admin</h1>
-      </div>
-      <div className="flex-1 overflow-auto py-2">
+    <div className="flex h-full flex-col bg-white pt-7 z-10">
+      <div className="flex-1 overflow-auto py-2 mt-16">
         <nav className="grid items-start px-2 text-sm">
-          {routes.map((route) => (
-            <Link
-              key={route.href}
-              href={route.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-muted-foreground transition-all hover:text-primary",
-                pathname === route.href && "bg-muted font-medium text-primary"
-              )}
-            >
-              <route.icon className="h-4 w-4" />
-              {route.label}
-            </Link>
-          ))}
+          {routes.map((route) => {
+            // Only show routes the user has permission to access
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (!hasPermission(route.role as any)) return null;
+
+            return (
+              <NavLink
+                key={route.href}
+                to={route.href}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center flex-col gap-3 rounded-lg py-2 text-muted-foreground text-gray-600 transition-all hover:text-black",
+                    isActive && "bg-muted font-medium text-black"
+                  )
+                }
+              >
+                <route.icon className="size-7" />
+                {route.label}
+              </NavLink>
+            );
+          })}
         </nav>
       </div>
       <div className="mt-auto border-t p-4">
-        <Button variant="outline" className="w-full justify-start gap-2">
-          <LogOut className="h-4 w-4" />
-          Logout
-        </Button>
+        <LogoutButton />
       </div>
     </div>
   );
-}
+};
+
+export default Sidebar;

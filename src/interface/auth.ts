@@ -17,10 +17,13 @@ export interface UserType {
   department?: DepartmentType;
 }
 
+export type UserRole = "ROLE_ADMIN" | "ROLE_USER";
+
 export interface AuthContextType {
   isAuthenticated: boolean;
   user: UserType | undefined;
   isLoaded: boolean;
   login: (username: string, password: string) => Promise<{ isAuthenticated: boolean; user: UserType }>;
   logout: () => Promise<void>;
+  hasPermission: (requiredRole: UserRole) => boolean
 }

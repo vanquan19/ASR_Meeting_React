@@ -1,35 +1,24 @@
+"use client";
+
 import type React from "react";
-import { Inter } from "next/font/google";
-import { ThemeProvider } from "../../components/admin/theme-provider";
+import { Outlet } from "react-router-dom";
 import Sidebar from "../../components/admin/sidebar";
+import Navbar from "../../components/Navbar";
 
-const inter = Inter({ subsets: ["latin"] });
-
-export const metadata = {
-  title: "Meeting Room Management",
-  description: "Admin dashboard for managing meeting rooms",
+const AdminLayout: React.FC = () => {
+  return (
+    <div className="flex h-screen">
+      <Sidebar />
+      <main className="flex-1 overflow-auto p-6 bg-gray-100/50">
+        <div className="fixed top-0 left-0 right-0 z-10">
+          <Navbar />
+        </div>
+        <div className="mt-20">
+          <Outlet />
+        </div>
+      </main>
+    </div>
+  );
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <body className={inter.className}>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <div className="flex h-screen">
-            <Sidebar />
-            <main className="flex-1 overflow-auto p-6">{children}</main>
-          </div>
-        </ThemeProvider>
-      </body>
-    </html>
-  );
-}
+export default AdminLayout;

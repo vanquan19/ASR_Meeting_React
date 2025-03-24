@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { checkAuth, logoutService } from "../services/authService";
 import { loginService } from "../services/authService";
-import { AuthContextType, UserType } from "../interface/auth";
+import { AuthContextType, UserRole, UserType } from "../interface/auth";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -67,9 +67,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(undefined);
   };
 
+  // Check if user has required role
+  const hasPermission = (requiredRole: UserRole): boolean => {
+    if (!user) return false;
+
+    // Admin has access to everything
+    if (user.role === "ROLE_ADMIN") return true;
+
+    // Manager has access to manager and user roles
+    if (user.role === "manager" && requiredRole === "ROLE_USER") return true;
+
+    // Direct role match
+    return user.role === requiredRole;
+  };
+
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, login, logout, isLoaded, user }}
+      value={{ isAuthenticated, login, logout, isLoaded, user, hasPermission }}
     >
       {children}
     </AuthContext.Provider>
