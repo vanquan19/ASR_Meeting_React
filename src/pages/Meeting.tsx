@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useSocket } from "../context/SocketContext";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Client } from "@stomp/stompjs";
 import { UserType } from "../interface/auth";
 import { Mic, MicOff, PhoneOff, Video, VideoOff } from "lucide-react";
+import SockJS from "sockjs-client";
 
 interface VideoRoomProps {
   meetingCode: string;
@@ -17,15 +17,15 @@ interface VideoRoomProps {
 interface Peer {
   id: string;
   user: UserType;
-  connection: RTCPeerConnection;
+  connection?: RTCPeerConnection;
   stream?: MediaStream | null;
 }
 
 interface SignalMessage {
-  type: "offer" | "answer" | "ice-candidate" | "user-joined" | "room-users";
-  to: string;
+  type: "offer" | "answer" | "ice-candidate" | "user-joined" | "meeting-users";
   from: string;
-  user: UserType;
+  to: string;
+  member: UserType;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload: any;
 }
@@ -35,9 +35,17 @@ export default function Meeting({
   user,
   isCameraEnable,
 }: VideoRoomProps) {
-  const socket = useSocket();
   //Luu tru thong tin nguoi dung khac trong phong
   const [peers, setPeers] = useState<Map<string, Peer>>(new Map());
+  const peersRef = useRef<Map<string, Peer>>(new Map());
+
+  const updatePeers = (
+    updateFn: (prevPeers: Map<string, Peer>) => Map<string, Peer>
+  ) => {
+    const updatedPeers = updateFn(peersRef.current);
+    peersRef.current = updatedPeers;
+    setPeers(updatedPeers);
+  };
   //Luu tru thong tin nguoi dung hien tai
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   //trang thai tat/bat mic/video nguoi dung hien tai
@@ -84,50 +92,66 @@ export default function Meeting({
       }
 
       peers.forEach((peer) => {
-        peer.connection.close();
+        if (peer.connection) {
+          peer.connection.close();
+        }
       });
     };
   }, []);
 
   //Ham ket noi toi server
   const connectToSignalingServer = () => {
-    socket.onConnect = () => {
+    const socket = new SockJS("http://localhost:8080/ws");
+    const client = new Client({
+      webSocketFactory: () => socket,
+      connectHeaders: {
+        Authorization: `Bearer ${localStorage.getItem("token")}`,
+      },
+
+      reconnectDelay: 5000,
+    });
+    client.onConnect = () => {
       setIsConnected(true);
       console.log("Connected to signaling server.");
       //subscribe toi phong hoi thoai
-      socket.subscribe(`/topic/room/${meetingCode}`, (message) => {
+      client.subscribe(`/topic/room/${meetingCode}`, (message) => {
         const data = JSON.parse(message.body) as SignalMessage;
-        console.log("Received message topic/room=/" + meetingCode, data);
+        handleSignalingData(data);
+      });
+      //lay danh sach nguoi dung trong phong
+      client.subscribe(`/topic/room/${meetingCode}/users`, (message) => {
+        const data = JSON.parse(message.body) as SignalMessage;
         handleSignalingData(data);
       });
 
-      //gui thong bao nguoi dung tham gia phong
-      socket.publish({
-        destination: `/app/room/${meetingCode}/join`,
+      // Request existing users in the room
+      client.publish({
+        destination: `/app/participants`,
         body: JSON.stringify({
           peerId: localPeerId.current,
+          meetingCode: meetingCode,
+        }),
+      });
+      //gui thong bao nguoi dung tham gia phong
+      client.publish({
+        destination: `/app/join`,
+        body: JSON.stringify({
+          peerId: localPeerId.current,
+          meetingCode: meetingCode,
         }),
         headers: {
           Authorization: `Bearer ${localStorage.getItem("token")}`,
         },
       });
-
-      // Request existing users in the room
-      socket.publish({
-        destination: `/app/room/${meetingCode}/users`,
-        body: JSON.stringify({
-          peerId: localPeerId.current,
-        }),
-      });
     };
 
-    socket.onStompError = (error) => {
-      console.error("Socket error:", error);
+    client.onStompError = (error) => {
+      console.error("client error:", error);
       setIsConnected(false);
     };
 
-    socket.activate();
-    stompClientRef.current = socket;
+    client.activate();
+    stompClientRef.current = client;
   };
 
   //Ham xu ly tin hieu
@@ -146,24 +170,15 @@ export default function Meeting({
         handleIceCandidate(message);
         break;
       case "user-joined":
+        if (message.member.employeeCode === user.employeeCode) return;
         // New user joined - initiate connection
-        console.log(`New user joined: ${message.user.employeeCode}`);
-        initiateCall(message.from, message.user);
+        console.log(`New user joined: ${message.member.employeeCode}`);
+        initiateCall(message.from, message.member);
         break;
-      case "room-users": {
-        // Received list of existing users in the room
-        console.log("Received existing users in the room");
-        const users = message.payload;
-        users.forEach((user: { peerId: string; user: UserType }) => {
-          if (user.peerId !== localPeerId.current) {
-            console.log(
-              `Initiating call to existing user: ${user.user.employeeCode}`
-            );
-            initiateCall(user.peerId, user.user);
-          }
-        });
+      case "meeting-users":
+        // console.log("Meeting users:", message);
         break;
-      }
+
       default:
         console.log("unlnown message type", message);
     }
@@ -174,32 +189,28 @@ export default function Meeting({
     peerId: string,
     user: UserType
   ): RTCPeerConnection => {
+    console.log(`Creating peer connection to ${peerId}`);
+    console.log("Current peers in createPeerConnection: ", peersRef.current);
     const peerConnection = new RTCPeerConnection({
       iceServers: [
         {
-          urls: "stun:stun.l.google.com:19302",
-        },
-        {
-          urls: "stun:stun1.l.google.com:19302",
+          urls: [
+            "stun:stun.l.google.com:19302",
+            "stun:global.stun.twilio.com:3478",
+          ],
         },
       ],
     });
 
-    //them stream cua nguoi dung hien tai vao ket noi
-    if (localStream) {
-      localStream.getTracks().forEach((track) => {
-        peerConnection.addTrack(track, localStream);
-      });
-    }
-
-    //lang nghe su kien ICE candidate
+    // lang nghe su kien ICE candidate
     peerConnection.onicecandidate = (event) => {
+      console.log("ICE candidate created");
       if (event.candidate) {
         sendSignalingMessage({
           type: "ice-candidate",
           from: localPeerId.current,
           to: peerId,
-          user: user,
+          member: user,
           payload: event.candidate,
         });
       }
@@ -208,73 +219,102 @@ export default function Meeting({
     //lang nghe su kien nhan stream tu nguoi dung khac
     peerConnection.ontrack = (event) => {
       console.log("Received remote stream from:", peerId);
-      setPeers((prevPeers) => {
+      updatePeers((prevPeers) => {
         const updatedPeers = new Map(prevPeers);
         const peer = updatedPeers.get(peerId);
         if (peer) {
-          updatedPeers.set(peerId, { ...peer, stream: event.streams[0] });
+          peer.stream = event.streams[0];
+          return updatedPeers;
         }
-        return updatedPeers;
+        return prevPeers;
       });
     };
 
-    const newPeer: Peer = {
-      id: peerId,
-      user: user,
-      connection: peerConnection,
-    };
-
-    setPeers((prevPeers) => {
-      const updatedPeers = new Map(prevPeers);
-      updatedPeers.set(peerId, newPeer);
-      return updatedPeers;
-    });
     return peerConnection;
   };
 
   const handleOffer = async (message: SignalMessage) => {
-    const { from, user, payload } = message;
+    const { from, member, payload } = message;
 
-    // Create a peer connection if it doesn't exist
-    let peerConnection = peers.get(from)?.connection;
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+    setLocalStream(stream);
 
-    if (!peerConnection) {
-      peerConnection = createPeerConnection(from, user);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
     }
 
     // Set the remote description (the offer)
-    await peerConnection.setRemoteDescription(
-      new RTCSessionDescription(payload)
-    );
+    const peerConnection = createPeerConnection(from, member);
+    if (peerConnection.signalingState !== "stable") {
+      console.warn(
+        "PeerConnection is not in a stable state. Skipping setRemoteDescription."
+      );
+      return;
+    }
 
+    if (!peerConnection.remoteDescription) {
+      await peerConnection.setRemoteDescription(payload);
+    }
     // Create an answer
     const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
+    await peerConnection.setLocalDescription(new RTCSessionDescription(answer));
+
+    const newPeer: Peer = {
+      id: from,
+      user: member,
+      connection: peerConnection,
+    };
+
+    updatePeers((prevPeers) => {
+      const updatedPeers = new Map(prevPeers);
+      updatedPeers.set(from, newPeer);
+      return updatedPeers;
+    });
 
     // Send the answer back
     sendSignalingMessage({
       type: "answer",
       from: localPeerId.current,
       to: from,
-      user: user,
+      member: user,
       payload: answer,
     });
   };
 
   const handleAnswer = async (message: SignalMessage) => {
     const { from, payload } = message;
-    const peer = peers.get(from);
+
+    const peer = peersRef.current.get(from);
 
     if (peer && peer.connection) {
+      if (peer.connection.signalingState !== "have-local-offer") {
+        console.warn(
+          "PeerConnection is not in a state to receive an answer. Skipping setRemoteDescription."
+        );
+        return;
+      }
+      if (peer.connection.remoteDescription) {
+        console.warn(
+          "PeerConnection already has a remote description. Skipping setRemoteDescription."
+        );
+        return;
+      }
+      console.log("Setting remote description for answer");
       await peer.connection.setRemoteDescription(
         new RTCSessionDescription(payload)
       );
+      for (const track of localStream!.getTracks()) {
+        peer.connection.addTrack(track, localStream!);
+      }
     }
   };
 
   const handleIceCandidate = (message: SignalMessage) => {
     const { from, payload } = message;
-    const peer = peers.get(from);
+    const peer = peersRef.current.get(from);
 
     if (peer && peer.connection) {
       peer.connection
@@ -286,26 +326,47 @@ export default function Meeting({
   const sendSignalingMessage = (message: SignalMessage) => {
     if (stompClientRef.current && stompClientRef.current.connected) {
       stompClientRef.current.publish({
-        destination: `/app/room/${meetingCode}/signal`,
+        destination: `/app/signal/${meetingCode}`,
         body: JSON.stringify(message),
       });
     }
   };
 
-  const initiateCall = async (peerId: string, user: UserType) => {
+  const initiateCall = async (peerId: string, member: UserType) => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+    setLocalStream(stream);
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+    }
     // Create a peer connection
-    const peerConnection = createPeerConnection(peerId, user);
+    const peerConnection = createPeerConnection(peerId, member);
 
     // Create an offer
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
+
+    const newPeer: Peer = {
+      id: peerId,
+      user: member,
+      connection: peerConnection,
+    };
+
+    updatePeers((prevPeers) => {
+      const updatedPeers = new Map(prevPeers);
+      updatedPeers.set(peerId, newPeer);
+      return updatedPeers;
+    });
 
     // Send the offer
     sendSignalingMessage({
       type: "offer",
       from: localPeerId.current,
       to: peerId,
-      user: user,
+      member: user,
       payload: offer,
     });
   };
@@ -338,7 +399,7 @@ export default function Meeting({
 
     // Close all peer connections
     peers.forEach((peer) => {
-      peer.connection.close();
+      if (peer.connection) peer.connection.close();
     });
 
     // Disconnect from signaling server

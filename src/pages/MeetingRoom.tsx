@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { Card } from "../components/ui/card";
 import { getAllMeetingForUser } from "../services/meetingService";
 import { MeetingType } from "../interface/meeting";
@@ -7,6 +7,8 @@ import WebcamComponent from "../components/ui/Video";
 // import AudioComponent from "../components/ui/Micro";
 
 import Meeting from "./Meeting";
+import Room from "./Room";
+import { useSocket } from "../context/SocketContext";
 
 const colors = [
   "bg-blue-500",
@@ -126,14 +128,16 @@ export default function MeetingRoom() {
             </div>
           ))}
         </div>
-        {!joined && showPreview ? (
+        {!joined && showPreview && (
           <PreviewJoinMeeting
             onJoin={handleJoin}
             meeting={currentMeeting || ({} as MeetingType)}
             setShowPreview={setShowPreview}
           />
-        ) : (
-          <Meeting
+        )}
+
+        {joined && (
+          <Room
             meetingCode={meetingCode}
             user={user}
             isCameraEnable={isTurnOnCamera}
