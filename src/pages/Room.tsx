@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Client } from "@stomp/stompjs";
@@ -23,7 +23,13 @@ interface Peer {
 }
 
 interface SignalMessage {
-  type: "offer" | "answer" | "ice-candidate" | "user-joined" | "meeting-users";
+  type:
+    | "offer"
+    | "answer"
+    | "ice-candidate"
+    | "nego-done"
+    | "user-joined"
+    | "meeting-users";
   from: string;
   to: string;
   member: UserType;
@@ -50,7 +56,17 @@ export default function Room({
     setPeers(updatedPeers);
   };
   //Luu tru thong tin nguoi dung hien tai
+  const localStreamRef = useRef<MediaStream | null>(null);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const updateLocalStream = (stream: MediaStream) => {
+    localStreamRef.current = stream;
+    setLocalStream(stream);
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+    }
+  };
+
+  const [remoteStreams, setRemoteStreams] = useState<MediaStream[] | []>([]);
   //trang thai tat/bat mic/video nguoi dung hien tai
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [videoEnabled, setVideoEnabled] = useState(isCameraEnable);
@@ -64,6 +80,7 @@ export default function Room({
   //luu tru id duy nhat cho nguoi dung hien tai trong phong
   const localPeerId = useRef<string>(`${user.employeeCode}-${Date.now()}`);
   //khoi tao media va ket noi toi server
+
   useEffect(() => {
     socket.subscribe(`/topic/room/${meetingCode}`, (message) => {
       const signalMessage: SignalMessage = JSON.parse(message.body);
@@ -81,8 +98,8 @@ export default function Room({
 
     return () => {
       socket.unsubscribe(`/topic/meeting/${meetingCode}`);
-      socket.unsubscribe(`/topic/meeting/${meetingCode}/users`);
-      socket.unsubscribe(`/topic/meeting/${meetingCode}/signal`);
+      socket.unsubscribe(`/topic/room/${meetingCode}/users`);
+      socket.unsubscribe(`/topic/room/${meetingCode}/signal`);
     };
   }, [meetingCode, socket]);
 
@@ -123,7 +140,10 @@ export default function Room({
         handleAcceptCall(message);
         break;
       case "ice-candidate":
-        // handleIceCandidate(message);
+        handleNegoNeedIncomming(message);
+        break;
+      case "nego-done":
+        handleNegoNeedFinal(message);
         break;
       case "user-joined":
         if (message.member.employeeCode === user.employeeCode) return;
@@ -151,109 +171,119 @@ export default function Room({
     }
   };
 
-  const handleCallToUser = async (to: string) => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
-    });
-    setLocalStream(stream);
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-    }
+  const handleCallToUser = useCallback(
+    async (to: string) => {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      updateLocalStream(stream);
 
-    const offer = await peer.getOffer();
-    console.log("Offer created", peer);
-    updatePeers((prevPeers) => {
-      const updatedPeers = new Map(prevPeers);
-      const peer = updatedPeers.get(to);
-      if (peer) {
-        peer.connection = peer.connection || new RTCPeerConnection();
-        peer.connection.onicecandidate = (event) => {
-          if (event.candidate) {
-            sendSignalingMessage({
-              type: "ice-candidate",
-              from: localPeerId.current,
-              to: to,
-              member: user,
-              payload: event.candidate,
-            });
-          }
-        };
-        peer.connection.ontrack = (event) => {
-          console.log("Received remote stream");
-          peer.stream = event.streams[0];
-          setPeers(updatedPeers);
-        };
-        console.log(
-          "Debuging signaling state of peer",
-          peersRef.current.get(to)
-        );
-        return updatedPeers;
+      const offer = await peer.getOffer();
+      console.log("Offer created", peer);
+
+      if (offer) {
+        sendSignalingMessage({
+          type: "offer",
+          from: localPeerId.current,
+          to: to,
+          member: user,
+          payload: offer,
+        });
       }
-      return prevPeers;
-    });
-    if (offer) {
-      sendSignalingMessage({
-        type: "offer",
+    },
+    [user]
+  );
+
+  const handleIncomingCall = useCallback(
+    async (message: SignalMessage) => {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      setLocalStream(stream);
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+      const answer = await peer.getAnswer(message.payload);
+      if (answer) {
+        sendSignalingMessage({
+          type: "answer",
+          from: localPeerId.current,
+          to: message.from,
+          member: user,
+          payload: answer,
+        });
+      }
+    },
+    [user]
+  );
+
+  const sendStreams = useCallback(() => {
+    console.log("localStream", localStreamRef.current);
+    if (!localStreamRef.current) return;
+    console.log("Sending streams to peers");
+    for (const track of localStreamRef.current.getTracks()) {
+      peer.peer.addTrack(track, localStreamRef.current);
+    }
+  }, []);
+
+  const handleAcceptCall = useCallback(
+    async (message: SignalMessage) => {
+      console.log("Accepting call from", message.from);
+      peer.setLocalDescription(message.payload);
+      console.log("Call Accepted!");
+      sendStreams();
+    },
+    [sendStreams]
+  );
+  const handleNegoNeeded = useCallback(async () => {
+    const offer = await peer.getOffer();
+    socket.publish({
+      destination: `/app/signal/${meetingCode}`,
+      body: JSON.stringify({
+        type: "ice-candidate",
         from: localPeerId.current,
-        to: to,
-        member: user,
+        to: "all",
         payload: offer,
-      });
-    }
-  };
-
-  const handleIncomingCall = async (message: SignalMessage) => {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: true,
-      audio: true,
+      }),
     });
-    setLocalStream(stream);
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = stream;
-    }
-    const answer = await peer.getAnswer(message.payload);
-    if (answer) {
-      sendSignalingMessage({
-        type: "answer",
-        from: localPeerId.current,
-        to: message.from,
-        member: user,
-        payload: answer,
-      });
-    }
-  };
+  }, [meetingCode, socket]);
 
-  const handleAcceptCall = async (message: SignalMessage) => {
-    console.log("Accepting call from", message.from);
-    console.log("Peer in Local", peersRef.current);
-    const peer = peersRef.current.get(message.from);
-    if (!peer) {
-      console.error("Peer not found");
-      return;
-    }
-    if (!peer.connection) {
-      console.error("Peer connection not found");
-      return;
-    }
-    if (peer.connection.signalingState !== "have-remote-offer") {
-      console.error(
-        "Invalid state to setLocalDescription:",
-        peer.connection.signalingState
-      );
-      return;
-    }
+  useEffect(() => {
+    peer.peer.addEventListener("negotiationneeded", handleNegoNeeded);
+    return () => {
+      peer.peer.removeEventListener("negotiationneeded", handleNegoNeeded);
+    };
+  }, [handleNegoNeeded]);
 
-    peer.connection.setLocalDescription(message.payload);
-    console.log("Call accepted");
+  const handleNegoNeedIncomming = useCallback(
+    async (message: SignalMessage) => {
+      const ans = await peer.getAnswer(message.payload);
+      if (ans) {
+        sendSignalingMessage({
+          type: "nego-done",
+          from: localPeerId.current,
+          to: message.from,
+          member: user,
+          payload: ans,
+        });
+      }
+    },
+    [user]
+  );
 
-    if (localStream) {
-      console.log("Adding local stream to peer connection");
-      localStream.getTracks().forEach((track) => {
-        peer.connection?.addTrack(track, localStream);
-      });
-    }
-  };
+  const handleNegoNeedFinal = useCallback(async (message: SignalMessage) => {
+    await peer.setLocalDescription(message.payload);
+  }, []);
+
+  useEffect(() => {
+    peer.peer.ontrack = async (ev) => {
+      const remoteStream = ev.streams;
+      console.log("GOT TRACKS!!");
+      setRemoteStreams((prev) => [...prev, remoteStream[0]]);
+    };
+  }, []);
 
   const sendSignalingMessage = (message: SignalMessage) => {
     socket.publish({
@@ -330,20 +360,20 @@ export default function Room({
         </Card>
 
         {/* Remote videos */}
-        {Array.from(peers.values()).map((peer) => (
+        {remoteStreams.map((peer, index) => (
           <Card
-            key={peer.id}
+            key={index}
             className="relative overflow-hidden aspect-video bg-black"
           >
-            {peer.stream ? (
-              <RemoteVideo stream={peer.stream} />
+            {peer ? (
+              <RemoteVideo stream={peer} />
             ) : (
               <div className="flex items-center justify-center h-full text-white">
                 Connecting...
               </div>
             )}
             <div className="absolute bottom-2 left-2 bg-black/50 px-2 py-1 rounded text-white text-sm">
-              {peer.user.name}
+              {"test"}
             </div>
           </Card>
         ))}
