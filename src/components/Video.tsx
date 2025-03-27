@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 
 import { Camera, CameraOff, Mic, MicOff } from "lucide-react";
 import { Card, CardContent } from "./ui/card";
-import { Badge } from "./ui/Badge";
+import { Badge } from "./ui/badge";
 import { Avatar, AvatarFallback } from "./ui/Image";
 
 interface VideoProps {

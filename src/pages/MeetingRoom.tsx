@@ -1,4 +1,4 @@
-import { use, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Card } from "../components/ui/card";
 import { getAllMeetingForUser } from "../services/meetingService";
 import { MeetingType } from "../interface/meeting";
