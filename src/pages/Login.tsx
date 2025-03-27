@@ -10,7 +10,7 @@ import bgLogin from "../assets/images/bg_login.jpg";
 import logo from "../assets/images/Logo.png";
 import calendar from "../assets/images/calendar.png";
 import { CircleX } from "lucide-react";
-import { Input } from "../components/ui/Input";
+import { Input } from "../components/ui/input";
 import { useState } from "react";
 import Validation from "../utils/validate.ts";
 import { useNavigate } from "react-router-dom";

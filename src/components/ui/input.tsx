@@ -20,5 +20,24 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
   }
 );
 Input.displayName = "Input";
+import { Search } from "lucide-react";
+
+export function SearchInput({
+  placeholder,
+  className,
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div className="relative w-full my-auto">
+      <Search className="absolute top-1/2 left-4 transform -translate-y-1/2" />
+      <input
+        type="text"
+        placeholder={placeholder}
+        className={`border border-gray-300 rounded-lg px-12 py-2 w-full text-base outline-none focus:border-gray-500 transition-all ${className}`}
+        {...props}
+      />
+    </div>
+  );
+}
 
 export { Input };

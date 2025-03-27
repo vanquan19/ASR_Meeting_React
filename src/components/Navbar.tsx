@@ -1,6 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import logo from "../assets/images/Logo.png";
-import { SearchInput } from "./ui/Input";
+import { SearchInput } from "./ui/input";
 import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
 export default function Navbar() {
