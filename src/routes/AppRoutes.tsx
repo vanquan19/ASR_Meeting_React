@@ -7,7 +7,6 @@ import Login from "../pages/Login";
 import MeetingRoom from "../pages/MeetingRoom";
 import Home from "../pages/Home";
 import Container from "../pages/Container";
-import Meeting from "../pages/Meeting";
 import DashboardPage from "../pages/admin/dashboard-page";
 import AdminLayout from "../pages/admin/layout";
 import RoomsPage from "../pages/admin/rooms-page";
@@ -28,7 +27,7 @@ const AppRoutes = () => {
               <Route path="/meeting-room" element={<Container />}>
                 <Route index element={<MeetingRoom />} />
               </Route>
-              <Route path="/meeting" element={<Meeting />} />
+
               <Route path="/dashboard" element={<AdminLayout />}>
                 <Route index element={<DashboardPage />} />
                 <Route path="rooms" element={<RoomsPage />} />

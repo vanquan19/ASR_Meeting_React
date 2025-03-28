@@ -6,9 +6,7 @@ import { Camera, CameraOff, FileText } from "lucide-react";
 import WebcamComponent from "../components/ui/Video";
 // import AudioComponent from "../components/ui/Micro";
 
-import Meeting from "./Meeting";
 import Room from "./Room";
-import { useSocket } from "../context/SocketContext";
 
 const colors = [
   "bg-blue-500",
