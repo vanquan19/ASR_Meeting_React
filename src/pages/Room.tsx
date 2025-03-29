@@ -52,6 +52,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   user,
   isCameraEnable,
 }) => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [me, setMe] = useState<UserType & { peerId: string }>({
     ...user,
     peerId: uuidv4(),
@@ -72,6 +73,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const peersRef = useRef<Record<string, RTCPeerConnection>>({});
   const screenStream = useRef<MediaStream | null>(null);
   const stompClient = useRef<Client | null>(null);
+  const streamRef = useRef<MediaStream | null>(null); // Reference to store current stream
 
   // Khởi tạo media stream
   useEffect(() => {
@@ -82,6 +84,8 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
           audio: true,
         });
         setStream(mediaStream);
+        streamRef.current = mediaStream;
+
         if (myVideo.current) {
           myVideo.current.srcObject = mediaStream;
         }
@@ -96,33 +100,75 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     initMedia();
 
     return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
+      console.log("Cleaning up video room component");
+
+      // Gọi leaveMeeting để dọn dẹp đúng cách
+      leaveMeeting();
+
+      // Dọn dẹp thêm nếu cần
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
-      if (screenStream.current) {
-        screenStream.current.getTracks().forEach((track) => track.stop());
+
+      if (myVideo.current) {
+        myVideo.current.srcObject = null;
       }
-      disconnect();
     };
   }, [isCameraEnable]);
 
+  // Add stream tracks to existing peer connections when stream changes
   useEffect(() => {
-    if (stream && Object.keys(peersRef.current).length > 0) {
-      console.log("Stream updated, re-adding tracks to existing peers");
-      Object.entries(peersRef.current).forEach(([peerId, peer]) => {
-        // Xóa các track cũ
-        peer.getSenders().forEach((sender) => peer.removeTrack(sender));
+    if (stream) {
+      streamRef.current = stream;
 
-        // Thêm track mới
-        if (stream) {
-          stream.getTracks().forEach((track) => {
-            peer.addTrack(track, stream);
-            console.log(`Re-added ${track.kind} track to peer ${peerId}`);
-          });
-        }
+      // Update existing peer connections with new stream
+      Object.entries(peersRef.current).forEach(([peerId, peer]) => {
+        // Remove old tracks
+        const senders = peer.getSenders();
+        senders.forEach((sender) => {
+          if (sender.track) {
+            peer.removeTrack(sender);
+          }
+        });
+
+        // Add new tracks
+        stream.getTracks().forEach((track) => {
+          peer.addTrack(track, stream);
+          console.log(`Updated ${track.kind} track for peer ${peerId}`);
+        });
+
+        // Renegotiate after changing tracks
+        triggerNegotiation(peerId, peer);
       });
     }
   }, [stream]);
+
+  const triggerNegotiation = async (
+    peerId: string,
+    peer: RTCPeerConnection
+  ) => {
+    try {
+      const offer = await peer.createOffer({
+        offerToReceiveAudio: true,
+        offerToReceiveVideo: true,
+      });
+      await peer.setLocalDescription(offer);
+
+      sendSignal({
+        type: "offer",
+        from: me.peerId,
+        to: peerId,
+        member: me,
+        payload: offer,
+      });
+    } catch (err) {
+      console.error(
+        `Error creating offer during renegotiation for ${peerId}:`,
+        err
+      );
+    }
+  };
 
   const initWebSocket = () => {
     const socket = new SockJS("http://localhost:8080/ws");
@@ -171,21 +217,24 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       }
     );
 
-    // Trong subscribeToTopics
     stompClient.current?.subscribe(
       `/user/queue/room/${meetingCode}/users`,
       (message: IMessage) => {
         const signal: SignalMessage = JSON.parse(message.body);
         if (signal.type === "meeting-users") {
-          // Lọc ra những người thực sự mới (chưa có trong danh sách hiện tại)
-          const currentPeerIds = Object.keys(peersRef.current);
-          const newParticipants = signal.payload.members.filter(
-            (m: SignalMessage) =>
-              m.from !== me.peerId && !currentPeerIds.includes(m.from)
+          console.log(
+            "Received existing participants list:",
+            signal.payload.members
           );
+          if (signal.payload.members && Array.isArray(signal.payload.members)) {
+            const existingMembers = signal.payload.members.filter(
+              (member: SignalMessage) => member.from !== me.peerId
+            );
 
-          if (newParticipants.length > 0) {
-            updateParticipantsList(newParticipants);
+            if (existingMembers.length > 0) {
+              console.log("Processing existing members:", existingMembers);
+              updateParticipantsList(existingMembers);
+            }
           }
         }
       }
@@ -223,49 +272,63 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
     console.log(`New user joined: ${signal.from} (${signal.member.name})`);
 
-    // Thêm vào danh sách participants
+    // Add to participants list
+    const newParticipant = { ...signal.member, peerId: signal.from };
     setParticipants((prev) => {
-      const existing = prev.find((p) => p.peerId === signal.from);
-      if (!existing) {
-        return [...prev, { ...signal.member, peerId: signal.from }];
+      // Check if already in list
+      const exists = prev.some((p) => p.peerId === newParticipant.peerId);
+      if (!exists) {
+        return [...prev, newParticipant];
       }
       return prev;
     });
-    participantRef.current = [
-      ...participantRef.current,
-      { peerId: signal.from, ...signal.member },
-    ];
 
-    // Tạo peer connection với người mới (isInitiator = true)
-    if (!peersRef.current[signal.from]) {
-      console.log(`Creating peer connection for new user ${signal.from}`);
-      createPeerConnection(signal.from, false);
-    } else {
-      console.log(`Peer connection already exists for ${signal.from}`);
-    }
+    // Update participant reference for future use
+    participantRef.current = participantRef.current.filter(
+      (p) => p.peerId !== newParticipant.peerId
+    );
+    participantRef.current.push(newParticipant);
+
+    // Create peer connection for the new user and send an offer
+    // Since we are already in the room, we initiate the connection
+    console.log(
+      `Creating initiator peer connection for new user ${signal.from}`
+    );
+    createPeerConnection(signal.from, true);
   };
 
   const handleUserLeft = (signal: SignalMessage) => {
     const peerId = signal.from;
+
+    console.log(`User left: ${peerId}, cleaning up...`);
+
+    // Đóng kết nối peer nếu có
     if (peersRef.current[peerId]) {
-      peersRef.current[peerId].close();
-      delete peersRef.current[peerId];
+      try {
+        peersRef.current[peerId].close();
+        delete peersRef.current[peerId];
+      } catch (err) {
+        console.error(`Error closing peer connection for ${peerId}:`, err);
+      }
     }
 
+    // Cập nhật state
     setPeers((prev) => {
       const newPeers = { ...prev };
       delete newPeers[peerId];
       return newPeers;
     });
 
+    // Loại bỏ khỏi danh sách người tham gia
     setParticipants((prev) => prev.filter((p) => p.peerId !== peerId));
+    participantRef.current = participantRef.current.filter(
+      (p) => p.peerId !== peerId
+    );
   };
-
   const handleWebRTCSignal = (signal: SignalMessage) => {
     if (signal.to !== me.peerId) return;
 
-    const peer = peersRef.current[signal.from];
-    if (!peer) return;
+    const peerId = signal.from;
 
     switch (signal.type) {
       case "offer":
@@ -278,9 +341,13 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         break;
       case "ice-candidate":
         console.log("Received ICE candidate from:", signal.from);
-        handleIceCandidate(signal, peer);
+        const peer = peersRef.current[peerId];
+        if (peer) {
+          handleIceCandidate(signal, peer);
+        } else {
+          console.warn(`No peer found for ICE candidate from ${peerId}`);
+        }
         break;
-
       default:
         console.warn("Unknown signal type:", signal.type);
     }
@@ -288,30 +355,33 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
   const handleOffer = async (signal: SignalMessage) => {
     const peerId = signal.from;
-    let peer = peersRef.current[peerId];
 
-    if (!peer || peer.signalingState === "closed") {
-      peer = createPeerConnection(peerId, false); // Người nhận offer là receiver
+    // Make sure we have the user in participants list
+    const userInfo = signal.member;
+    if (!participantRef.current.some((p) => p.peerId === peerId)) {
+      const newParticipant = { ...userInfo, peerId };
+      participantRef.current.push(newParticipant);
+      setParticipants((prev) => [...prev, newParticipant]);
+    }
+
+    // Create or get peer connection
+    let peer = peersRef.current[peerId];
+    if (!peer || peer.connectionState === "closed") {
+      console.log(`Creating receiver peer for ${peerId} in response to offer`);
+      peer = createPeerConnection(peerId, false);
     }
 
     try {
+      // Set remote description from the offer
       await peer.setRemoteDescription(
         new RTCSessionDescription(signal.payload)
       );
 
-      // QUAN TRỌNG: Đảm bảo thêm track trước khi tạo answer
-      if (stream) {
-        stream.getTracks().forEach((track) => {
-          peer.addTrack(track, stream);
-        });
-      }
-
-      const answer = await peer.createAnswer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: true,
-      });
+      // Create and set answer
+      const answer = await peer.createAnswer();
       await peer.setLocalDescription(answer);
 
+      // Send answer back
       sendSignal({
         type: "answer",
         from: me.peerId,
@@ -327,59 +397,82 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const handleAnswer = async (signal: SignalMessage) => {
     const peerId = signal.from;
     const peer = peersRef.current[peerId];
-    console.log("Received answer from:", peerId + signal.member.name);
 
     if (!peer) {
-      console.error(`No peer found for ${peerId}`);
+      console.error(`No peer found for answer from ${peerId}`);
       return;
     }
 
     try {
+      console.log(`Setting remote description for answer from ${peerId}`);
       await peer.setRemoteDescription(
         new RTCSessionDescription(signal.payload)
       );
-      console.log(`Successfully set remote answer from ${peerId}`);
     } catch (err) {
       console.error(`Error handling answer from ${peerId}:`, err);
     }
   };
+
   const handleIceCandidate = async (
     signal: SignalMessage,
     peer: RTCPeerConnection
   ) => {
     try {
-      console.log("Received ICE candidate from:", signal.from);
       if (signal.payload) {
         await peer.addIceCandidate(new RTCIceCandidate(signal.payload));
+        console.log(`Added ICE candidate from ${signal.from}`);
       }
     } catch (err) {
-      console.error("Error adding ICE candidate:", err);
+      console.error(`Error adding ICE candidate from ${signal.from}:`, err);
     }
   };
 
   const updateParticipantsList = (signals: SignalMessage[]) => {
+    console.log("Updating participants list with:", signals);
+
+    // Extract participants from signals
     const newParticipants = signals
       .map((s) => ({ ...s.member, peerId: s.from }))
       .filter((p) => p.peerId !== me.peerId);
 
-    setParticipants(newParticipants);
-    participantRef.current = newParticipants;
+    // Update state with new participants
+    setParticipants((prev) => {
+      // Filter out duplicates
+      const existing = prev.map((p) => p.peerId);
+      const uniqueNew = newParticipants.filter(
+        (p) => !existing.includes(p.peerId)
+      );
+      return [...prev, ...uniqueNew];
+    });
 
-    // Người đang trong phòng sẽ tạo peer connection và gửi offer cho người mới
+    // Update reference for further use
+    participantRef.current = [
+      ...participantRef.current.filter(
+        (p) => !newParticipants.some((np) => np.peerId === p.peerId)
+      ),
+      ...newParticipants,
+    ];
+
+    // For each existing participant, create a peer connection
+    // We are the newcomer, so we'll create peer connections as a receiver
     newParticipants.forEach((participant) => {
+      console.log(
+        `Creating receiver peer for existing participant ${participant.peerId}`
+      );
       if (!peersRef.current[participant.peerId]) {
-        console.log(
-          `Creating initiator peer for new participant ${participant.peerId}`
-        );
-        createPeerConnection(participant.peerId, true); // Người cũ là initiator
+        createPeerConnection(participant.peerId, false);
       }
     });
   };
+
   const createPeerConnection = (peerId: string, isInitiator: boolean) => {
     console.log(
-      `Created ${isInitiator ? "initiator" : "receiver"} peer for ${peerId}`
+      `Creating ${
+        isInitiator ? "initiator" : "receiver"
+      } peer connection for ${peerId}`
     );
-    // Đóng kết nối cũ nếu tồn tại
+
+    // Close existing connection if any
     if (peersRef.current[peerId]) {
       peersRef.current[peerId].close();
     }
@@ -394,15 +487,15 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       ],
     });
 
-    // QUAN TRỌNG: Luôn thêm track nếu có stream
-    if (stream) {
-      stream.getTracks().forEach((track) => {
-        peer.addTrack(track, stream);
+    // Add current stream tracks to the peer
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => {
+        peer.addTrack(track, streamRef.current!);
         console.log(`Added ${track.kind} track to peer ${peerId}`);
       });
     }
 
-    // Xử lý ICE candidate
+    // Handle ICE candidates
     peer.onicecandidate = (event) => {
       if (event.candidate) {
         sendSignal({
@@ -415,29 +508,56 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       }
     };
 
-    // Xử lý remote stream
+    // Handle connection state changes
+    peer.onconnectionstatechange = () => {
+      console.log(`Peer ${peerId} connection state: ${peer.connectionState}`);
+    };
+
+    // Handle ice connection state changes
+    peer.oniceconnectionstatechange = () => {
+      console.log(
+        `Peer ${peerId} ICE connection state: ${peer.iceConnectionState}`
+      );
+    };
+
+    // CRUCIAL: Handle remote stream
     peer.ontrack = (event) => {
-      console.log(`Received remote stream from ${peerId}`, event.streams);
+      console.log(`Received remote track from ${peerId}`, event.streams[0]?.id);
+
       if (event.streams && event.streams.length > 0) {
+        const remoteStream = event.streams[0];
+
+        // Find user info for this peer
+        const userInfo = participantRef.current.find(
+          (p) => p.peerId === peerId
+        );
+
+        if (!userInfo) {
+          console.warn(`No user info found for peer ${peerId}`);
+          return;
+        }
+
+        // Update peers state with the remote stream
         setPeers((prev) => ({
           ...prev,
           [peerId]: {
             id: peerId,
-            user: participantRef.current.find(
-              (p) => p.peerId === peerId
-            ) as UserType,
+            user: userInfo,
             connection: peer,
-            stream: event.streams[0],
+            stream: remoteStream,
           },
         }));
+
+        console.log(`Successfully added remote stream for ${peerId}`);
       }
     };
 
-    // Chỉ initiator mới tạo offer ngay lập tức
+    // If we're the initiator, we need to create and send an offer
     if (isInitiator) {
-      peer.onnegotiationneeded = async () => {
+      console.log(`As initiator, creating offer for ${peerId}`);
+      // Delay slightly to ensure connection is ready
+      setTimeout(async () => {
         try {
-          console.log("Negotiation needed from", me.name);
           const offer = await peer.createOffer({
             offerToReceiveAudio: true,
             offerToReceiveVideo: true,
@@ -454,19 +574,23 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         } catch (err) {
           console.error(`Error creating offer for ${peerId}:`, err);
         }
-      };
+      }, 1000);
     }
 
+    // Store the peer
     peersRef.current[peerId] = peer;
     return peer;
   };
+
   const sendSignal = (signal: SignalMessage) => {
-    console.log("Sending signal:", signal);
+    console.log("Sending signal:", signal.type, "to:", signal.to);
     if (stompClient.current?.connected) {
       stompClient.current.publish({
         destination: `/app/signal/${meetingCode}`,
         body: JSON.stringify(signal),
       });
+    } else {
+      console.warn("Cannot send signal: WebSocket not connected");
     }
   };
 
@@ -476,7 +600,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       peerId: me.peerId,
     };
 
-    // Gửi yêu cầu tham gia phòng
+    // Send join request
     stompClient.current?.publish({
       destination: "/app/join",
       body: JSON.stringify(joinRequest),
@@ -485,7 +609,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       },
     });
 
-    // Yêu cầu danh sách người tham gia hiện tại
+    // Request current participants list
     stompClient.current?.publish({
       destination: "/app/participants",
       body: JSON.stringify(joinRequest),
@@ -513,95 +637,174 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     if (stompClient.current) {
       stompClient.current.deactivate();
     }
-    setPeers({});
+
+    // Clean up peer connections
+    Object.values(peersRef.current).forEach((peer) => peer.close());
     peersRef.current = {};
+    setPeers({});
     setParticipants([]);
   };
-
   const leaveMeeting = () => {
-    // Gửi thông báo rời phòng
-    sendSignal({
-      type: "user-left",
-      from: me.peerId,
-      to: "all",
-      member: me,
-      payload: null,
-    });
+    // Gửi thông báo rời phòng tới server và các peer khác
+    if (stompClient.current?.connected) {
+      sendSignal({
+        type: "user-left",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: null,
+      });
+    }
 
-    // Đóng tất cả kết nối
-    Object.values(peersRef.current).forEach((peer) => peer.close());
+    // Đóng tất cả kết nối peer
+    Object.entries(peersRef.current).forEach(([peerId, peer]) => {
+      try {
+        console.log(`Closing peer connection with ${peerId}`);
+        peer.close();
+      } catch (err) {
+        console.error(`Error closing peer ${peerId}:`, err);
+      }
+    });
     peersRef.current = {};
     setPeers({});
 
     // Dừng tất cả stream
     if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
+      stream.getTracks().forEach((track) => {
+        track.stop();
+        console.log("Stopped local media track:", track.kind);
+      });
     }
+
     if (screenStream.current) {
-      screenStream.current.getTracks().forEach((track) => track.stop());
+      screenStream.current.getTracks().forEach((track) => {
+        track.stop();
+        console.log("Stopped screen share track:", track.kind);
+      });
+      screenStream.current = null;
+      setScreenShare(false);
     }
 
     // Ngắt kết nối WebSocket
     if (stompClient.current) {
       stompClient.current.deactivate();
+      stompClient.current = null;
     }
+
+    // Reset danh sách người tham gia
+    setParticipants([]);
+    participantRef.current = [];
   };
 
   const toggleScreenShare = async () => {
-    if (screenShare) {
-      screenStream.current?.getTracks().forEach((track) => track.stop());
-      setScreenShare(false);
+    try {
+      if (screenShare) {
+        // Dừng chia sẻ màn hình
+        if (screenStream.current) {
+          screenStream.current.getTracks().forEach((track) => {
+            track.stop();
+            console.log("Stopped screen share track:", track.kind);
+          });
+          screenStream.current = null;
+        }
+        setScreenShare(false);
 
-      // Quay lại stream camera
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        video: isCameraEnable,
-        audio: true,
-      });
-      setStream(newStream);
-      if (myVideo.current) {
-        myVideo.current.srcObject = newStream;
-      }
+        // Quay lại sử dụng camera (nếu được bật)
+        try {
+          const newStream = await navigator.mediaDevices.getUserMedia({
+            video: !videoOff && isCameraEnable,
+            audio: !muted,
+          });
 
-      // Cập nhật stream cho các peer
-      Object.values(peersRef.current).forEach((peer) => {
-        const senders = peer.getSenders();
-        if (stream) {
-          senders.forEach((sender) => {
-            if (sender.track?.kind === "video") {
-              sender.replaceTrack(stream.getVideoTracks()[0]);
+          setStream(newStream);
+          streamRef.current = newStream;
+
+          if (myVideo.current) {
+            myVideo.current.srcObject = newStream;
+          }
+
+          // Cập nhật track cho tất cả peer connections
+          Object.entries(peersRef.current).forEach(([peerId, peer]) => {
+            const senders = peer.getSenders();
+
+            // Tìm và thay thế video track
+            const videoSender = senders.find((s) => s.track?.kind === "video");
+            if (videoSender && newStream.getVideoTracks().length > 0) {
+              videoSender
+                .replaceTrack(newStream.getVideoTracks()[0])
+                .then(() => console.log(`Replaced video track for ${peerId}`))
+                .catch((err) =>
+                  console.error(
+                    `Error replacing video track for ${peerId}:`,
+                    err
+                  )
+                );
+            }
+
+            // Tìm và thay thế audio track nếu cần
+            const audioSender = senders.find((s) => s.track?.kind === "audio");
+            if (audioSender && newStream.getAudioTracks().length > 0) {
+              audioSender
+                .replaceTrack(newStream.getAudioTracks()[0])
+                .then(() => console.log(`Replaced audio track for ${peerId}`))
+                .catch((err) =>
+                  console.error(
+                    `Error replacing audio track for ${peerId}:`,
+                    err
+                  )
+                );
             }
           });
+        } catch (err) {
+          console.error("Error reacquiring user media:", err);
+          setError(
+            "Không thể khôi phục camera/microphone sau khi dừng chia sẻ màn hình"
+          );
         }
-      });
-    } else {
-      try {
+      } else {
+        // Bắt đầu chia sẻ màn hình
         const screenStreamVal = await navigator.mediaDevices.getDisplayMedia({
           video: true,
+          audio: true, // Cho phép chia sẻ âm thanh hệ thống nếu có
         });
+
         screenStream.current = screenStreamVal;
         setScreenShare(true);
+
         if (myVideo.current) {
           myVideo.current.srcObject = screenStreamVal;
         }
 
-        // Cập nhật stream cho các peer
-        Object.values(peersRef.current).forEach((peer) => {
+        // Cập nhật video track cho tất cả peer connections
+        Object.entries(peersRef.current).forEach(([peerId, peer]) => {
           const senders = peer.getSenders();
-          senders.forEach((sender) => {
-            if (sender.track?.kind === "video") {
-              sender.replaceTrack(screenStreamVal.getVideoTracks()[0]);
-            }
-          });
+          const videoSender = senders.find((s) => s.track?.kind === "video");
+
+          if (videoSender && screenStreamVal.getVideoTracks().length > 0) {
+            videoSender
+              .replaceTrack(screenStreamVal.getVideoTracks()[0])
+              .then(() =>
+                console.log(`Replaced with screen share for ${peerId}`)
+              )
+              .catch((err) =>
+                console.error(
+                  `Error replacing with screen share for ${peerId}:`,
+                  err
+                )
+              );
+          }
         });
 
-        // Xử lý khi người dùng dừng chia sẻ màn hình từ trình duyệt
+        // Xử lý khi người dùng dừng chia sẻ từ trình duyệt
         screenStreamVal.getVideoTracks()[0].onended = () => {
+          console.log("Screen sharing ended by browser UI");
           toggleScreenShare();
         };
-      } catch (err) {
-        console.error("Error sharing screen:", err);
-        setError("Không thể chia sẻ màn hình. Vui lòng thử lại.");
       }
+    } catch (err) {
+      console.error("Error handling screen share:", err);
+      setError("Không thể chia sẻ màn hình. Vui lòng thử lại.");
+      setScreenShare(false);
     }
   };
 
@@ -625,7 +828,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     }
   };
 
-  // Tự động tham gia khi component mount
+  // Auto-join on component mount
   useEffect(() => {
     connectToMeeting();
   }, []);
