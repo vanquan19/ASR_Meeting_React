@@ -20,7 +20,7 @@ const fetchApi = async (url: string, options: fetchOptions = {})=> {
     if (!response.ok) {
         return {
             code: response.status,
-            message: response.statusText
+            message: response.statusText,
         }
     }
 

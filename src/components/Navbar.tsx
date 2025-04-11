@@ -10,7 +10,7 @@ export default function Navbar() {
 
   const handleLogout = () => {
     logout();
-    navigate("/login");
+    navigate("/");
   };
   return (
     <div className="h-16">
@@ -57,7 +57,10 @@ export default function Navbar() {
                     className="size-12 rounded-full"
                   />
                 )}
-                <Link to="/profile" className="hover:bg-gray-100 w-full p-1">
+                <Link
+                  to="/dashboard/profile"
+                  className="hover:bg-gray-100 w-full p-1"
+                >
                   <span className="text-base uppercase font-bold ">
                     {user && user.name}
                   </span>
