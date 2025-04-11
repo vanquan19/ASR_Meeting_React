@@ -92,13 +92,11 @@ export default function AccountsPage() {
     {} as DepartmentType
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [availableDegrees, setAvailableDegrees] = useState(degrees);
+  const [availableDegrees] = useState(degrees);
   const [availableDepartments, setAvailableDepartments] = useState<
     DepartmentType[]
   >([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [availablePositions, setAvailablePositions] = useState(positions);
+  const [availablePositions] = useState(positions);
 
   useEffect(() => {
     const fetchDpt = async () => {
@@ -475,11 +473,11 @@ export default function AccountsPage() {
                         size="icon"
                         onClick={() => {
                           setNewUser({
-                            employeeCode: user.employeeCode,
+                            employeeCode: user.employeeCode || "",
                             name: user.name,
                             email: user.email,
-                            dob: user.dob,
-                            degree: user.degree,
+                            dob: user.dob || "",
+                            degree: user.degree || "",
                             department: user.department?.id + "",
                             position: user.role,
                           });

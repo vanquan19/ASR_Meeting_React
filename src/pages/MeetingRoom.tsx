@@ -106,14 +106,14 @@ export default function MeetingRoom() {
       </button>
     ),
   };
-
-  const handleUpdatePaticipantsCount = (meetingCode: string, count: number) => {
-    setDataMeetingRoom((prev) =>
-      prev.map((item) =>
-        item.meetingCode === meetingCode ? { ...item, count } : item
-      )
-    );
-  };
+  //this function is used to update the participants count of the meeting
+  // const handleUpdatePaticipantsCount = (meetingCode: string, count: number) => {
+  //   setDataMeetingRoom((prev) =>
+  //     prev.map((item) =>
+  //       item.meetingCode === meetingCode ? { ...item, count } : item
+  //     )
+  //   );
+  // };
 
   console.log("dataMeetingRoom", dataMeetingRoom);
 

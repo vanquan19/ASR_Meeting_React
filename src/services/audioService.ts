@@ -27,7 +27,7 @@ export const convertWebMToWav = async (webmBlob: Blob): Promise<Blob> => {
       };
       
       fileReader.onerror = (error) => {
-        reject(new Error('File reading failed'));
+        reject(new Error('File reading failed with error: ' + error));
       };
       
       fileReader.readAsArrayBuffer(webmBlob);
@@ -41,7 +41,6 @@ export const convertWebMToWav = async (webmBlob: Blob): Promise<Blob> => {
     const bufferData = new ArrayBuffer(length);
     const view = new DataView(bufferData);
     const channels: Float32Array[] = [];
-    let offset = 0;
     let pos = 0;
   
     // Lấy dữ liệu từ các kênh

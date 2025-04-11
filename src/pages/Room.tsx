@@ -75,11 +75,10 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   handleLeave,
   currentMeeting,
 }) => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const [me, setMe] = useState<UserType & { peerId: string }>({
+  const me: UserType & { peerId: string } = {
     ...user,
     peerId: uuidv4(),
-  });
+  };
   const [hasMic, setHasMic] = useState<boolean>(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Record<string, Peer>>({});
@@ -107,7 +106,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
     null
   );
-  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
+  // const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
 
   // Khởi tạo media stream
   useEffect(() => {
@@ -930,7 +929,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     if (respone.code === 200) {
       console.log("Audio saved successfully:", respone);
     }
-    setAudioChunks([]);
+    // setAudioChunks([]);
     setMediaRecorder(null);
   };
 
@@ -985,7 +984,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         mediaRecorder.stop();
       }
       setMediaRecorder(null);
-      setAudioChunks([]);
+      // setAudioChunks([]);
 
       // Tắt microphone
       sendSignal({
