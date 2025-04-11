@@ -20,7 +20,9 @@ interface SocketProviderProps {
 
 export const SocketProvider = (props: SocketProviderProps) => {
   const socket = useMemo(() => {
-    const socket = new SockJS("http://localhost:8080/ws");
+    const socket = new SockJS(
+      `${import.meta.env.VITE_API_BASE_URL}:${import.meta.env.VITE_API_PORT}/ws`
+    );
     const client = new Client({
       webSocketFactory: () => socket,
       connectHeaders: {

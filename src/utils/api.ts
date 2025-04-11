@@ -1,4 +1,4 @@
-const API_BASE_URL:string = 'http://localhost:8080/';
+const API_BASE_URL:string = `${import.meta.env.VITE_API_BASE_URL}:${import.meta.env.VITE_API_PORT}/`;
 
 
 interface fetchOptions extends RequestInit {
