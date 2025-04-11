@@ -1,5 +1,3 @@
-"use client";
-
 import { ScrollArea } from "./ui/scroll-area";
 import { cn } from "../lib/utils";
 
