@@ -18,11 +18,10 @@ const LogoutButton: React.FC = () => {
   return (
     <Button
       variant="outline"
-      className="w-full justify-start gap-2"
+      className="w-full justify-center hover:bg-blue-200 md:cursor-pointer transition duration-300"
       onClick={handleLogout}
     >
       <LogOut className="h-4 w-4" />
-      Đăng xuất
     </Button>
   );
 };

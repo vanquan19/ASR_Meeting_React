@@ -11,8 +11,8 @@ import DashboardPage from "../pages/admin/dashboard-page";
 import AdminLayout from "../pages/admin/layout";
 import RoomsPage from "../pages/admin/rooms-page";
 import AccountsPage from "../pages/admin/account-page";
-import MeetingsPage from "../pages/admin/meeting-page";
 import ProfilePage from "../pages/admin/profile-page";
+import MeetingRoomPage from "../pages/admin/meeting-room-page";
 
 const AppRoutes = () => {
   return (
@@ -31,8 +31,9 @@ const AppRoutes = () => {
               <Route path="/dashboard" element={<AdminLayout />}>
                 <Route index element={<DashboardPage />} />
                 <Route path="rooms" element={<RoomsPage />} />
+                <Route path="meeting-rooms" element={<MeetingRoomPage />} />
+                {/* <Route path="meeting-rooms" element={<MeetingRoomPage />} /> */}
                 <Route path="accounts" element={<AccountsPage />} />
-                <Route path="meetings" element={<MeetingsPage />} />
                 <Route path="profile" element={<ProfilePage />} />
               </Route>
             </Route>
