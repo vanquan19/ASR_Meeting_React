@@ -1,3 +1,4 @@
+// vite.config.ts
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
@@ -8,14 +9,20 @@ export default defineConfig({
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
-          ui: [
-            // UI libraries
+          radix: [
             '@radix-ui/react-avatar',
             '@radix-ui/react-dialog',
-            // Add other UI libraries
+            '@radix-ui/react-label',
+            '@radix-ui/react-select',
+            '@radix-ui/react-tabs'
+          ],
+          utils: [
+            'react-toastify'
           ]
         }
       }
-    }
+    },
+    // Optionally increase the warning limit if you prefer
+    // chunkSizeWarningLimit: 600
   }
 })
