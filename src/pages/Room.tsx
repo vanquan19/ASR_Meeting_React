@@ -75,10 +75,14 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   handleLeave,
   currentMeeting,
 }) => {
-  const me: UserType & { peerId: string } = {
+  const [me] = useState<
+    UserType & {
+      peerId: string;
+    }
+  >({
     ...user,
     peerId: uuidv4(),
-  };
+  });
   const [hasMic, setHasMic] = useState<boolean>(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Record<string, Peer>>({});
@@ -607,19 +611,6 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       }
     });
   };
-
-  useEffect(() => {
-    sendSignal({
-      type: "participants-length",
-      from: me.peerId,
-      to: "all",
-      member: me,
-      payload: {
-        count: participants.length,
-        meetingCode: currentMeeting.meetingCode,
-      },
-    });
-  }, [currentMeeting.meetingCode, participants]);
 
   const handleChatMessage = (signal: SignalMessage) => {
     const chatMessage: ChatType = {
