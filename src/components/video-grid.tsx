@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { cn } from "../lib/utils";
-import WebcamComponent from "./ui/Video";
+import WebcamComponent from "./ui/video";
 import { UserType } from "../interface/auth";
 
 export interface Participant {

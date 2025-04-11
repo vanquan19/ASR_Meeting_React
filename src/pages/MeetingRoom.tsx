@@ -16,7 +16,7 @@ import {
   RequestAddMember,
 } from "../interface/meeting";
 import { FileText, PencilLine, PlusCircle, Users2 } from "lucide-react";
-import WebcamComponent from "../components/ui/Video";
+import WebcamComponent from "../components/ui/video";
 import leavingMeetingSound from "../assets/sounds/leaving-meeting.mp3";
 
 import Room from "./Room";
