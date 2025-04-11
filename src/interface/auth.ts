@@ -17,7 +17,7 @@ export interface UserType {
   department?: DepartmentType;
 }
 
-export type UserRole = "ROLE_ADMIN" | "ROLE_USER";
+export type UserRole = "ROLE_ADMIN" | "ROLE_USER" | "ROLE_SECRETARY";
 
 export interface AuthContextType {
   isAuthenticated: boolean;

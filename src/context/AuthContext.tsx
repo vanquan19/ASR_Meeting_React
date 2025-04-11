@@ -70,13 +70,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   // Check if user has required role
   const hasPermission = (requiredRole: UserRole): boolean => {
     if (!user) return false;
-
-    // Admin has access to everything
-    if (user.role === "ROLE_ADMIN") return true;
-
-    // Manager has access to manager and user roles
-    if (user.role === "manager" && requiredRole === "ROLE_USER") return true;
-
     // Direct role match
     return user.role === requiredRole;
   };

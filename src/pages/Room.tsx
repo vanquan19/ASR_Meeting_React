@@ -2,9 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { Client, IMessage } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 import {
-  FaVideo,
   FaVideoSlash,
-  FaMicrophone,
   FaMicrophoneSlash,
   FaDesktop,
   FaPhone,
@@ -12,11 +10,28 @@ import {
 } from "react-icons/fa";
 import { v4 as uuidv4 } from "uuid";
 import { UserType } from "../interface/auth";
+import joinSound from "../assets/sounds/join-meeting.mp3";
+import { MeetingType } from "../interface/meeting";
+import logo from "../assets/images/Logo.png";
+import {
+  LucideHand,
+  LucideMessageCircleMore,
+  LucideMic,
+  LucideMicOff,
+  LucideScreenShare,
+  LucideUsersRound,
+  LucideVideo,
+  LucideVideoOff,
+} from "lucide-react";
+import { ChatComponent } from "./Chat";
+import { ChatType } from "../interface/chat";
+import { convertWebMToWav, saveAudio } from "../services/audioService";
 
 interface VideoRoomProps {
   meetingCode: string;
   user: UserType;
-  isCameraEnable: boolean;
+  handleLeave: () => void;
+  currentMeeting: MeetingType;
 }
 
 interface Peer {
@@ -26,7 +41,7 @@ interface Peer {
   stream?: MediaStream | null;
 }
 
-interface SignalMessage {
+export interface SignalMessage {
   type:
     | "offer"
     | "answer"
@@ -34,7 +49,14 @@ interface SignalMessage {
     | "nego-done"
     | "user-joined"
     | "meeting-users"
-    | "user-left";
+    | "chat"
+    | "user-left"
+    | "has-mic"
+    | "end-mic"
+    | "clear-mic"
+    | "raised-hands"
+    | "lower-hands"
+    | "participants-length";
   from: string;
   to: string;
   member: UserType;
@@ -50,21 +72,29 @@ interface JoinRequest {
 const VideoRoom: React.FC<VideoRoomProps> = ({
   meetingCode,
   user,
-  isCameraEnable,
+  handleLeave,
+  currentMeeting,
 }) => {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [me, setMe] = useState<UserType & { peerId: string }>({
     ...user,
     peerId: uuidv4(),
   });
+  const [hasMic, setHasMic] = useState<boolean>(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Record<string, Peer>>({});
   const [screenShare, setScreenShare] = useState(false);
-  const [muted, setMuted] = useState(!isCameraEnable);
-  const [videoOff, setVideoOff] = useState(!isCameraEnable);
+  const [muted, setMuted] = useState(true);
+  const [videoOff, setVideoOff] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [showParticipants, setShowParticipants] = useState(true);
+  const [countParticipants, setCountParticipants] = useState(1);
+  const [isTakeHand, setIsTakeHand] = useState<boolean>(false);
+  const [takeHands, setTakeHands] = useState<string[]>([]);
   const [participants, setParticipants] = useState<
     (UserType & { peerId: string })[]
   >([]);
+  const [chats, setChats] = useState<ChatType[]>([]);
   const participantRef = useRef<(UserType & { peerId: string })[]>([]);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -74,15 +104,30 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const screenStream = useRef<MediaStream | null>(null);
   const stompClient = useRef<Client | null>(null);
   const streamRef = useRef<MediaStream | null>(null); // Reference to store current stream
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
+    null
+  );
+  const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
 
   // Khởi tạo media stream
   useEffect(() => {
     const initMedia = async () => {
       try {
         const mediaStream = await navigator.mediaDevices.getUserMedia({
-          video: isCameraEnable,
+          video: true,
           audio: true,
         });
+
+        // Tắt microphone ngay sau khi lấy stream
+        mediaStream.getAudioTracks().forEach((track) => {
+          track.enabled = false; // Tắt microphone
+        });
+
+        // Bật camera
+        mediaStream.getVideoTracks().forEach((track) => {
+          track.enabled = true; // Bật camera
+        });
+
         setStream(mediaStream);
         streamRef.current = mediaStream;
 
@@ -102,9 +147,6 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     return () => {
       console.log("Cleaning up video room component");
 
-      // Gọi leaveMeeting để dọn dẹp đúng cách
-      leaveMeeting();
-
       // Dọn dẹp thêm nếu cần
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
@@ -115,7 +157,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         myVideo.current.srcObject = null;
       }
     };
-  }, [isCameraEnable]);
+  }, []);
 
   // Add stream tracks to existing peer connections when stream changes
   useEffect(() => {
@@ -213,7 +255,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       `/topic/room/${meetingCode}/signal`,
       (message: IMessage) => {
         const signal: SignalMessage = JSON.parse(message.body);
-        handleWebRTCSignal(signal);
+        handleAllSignal(signal);
       }
     );
 
@@ -251,14 +293,16 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
   const handleSignal = (signal: SignalMessage) => {
     switch (signal.type) {
-      case "user-joined":
+      case "user-joined": {
         console.log("User joined:", signal.from);
+        //sound join meeting
+        const audio = new Audio(joinSound);
+        audio.volume = 0.5;
+        audio.play();
         handleUserJoined(signal);
         break;
-      case "user-left":
-        console.log("User left:", signal.from);
-        handleUserLeft(signal);
-        break;
+      }
+
       default:
         console.log("Unhandled signal type:", signal.type);
     }
@@ -294,52 +338,25 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     console.log(
       `Creating initiator peer connection for new user ${signal.from}`
     );
+    setCountParticipants((prev) => prev + 1);
     createPeerConnection(signal.from, true);
   };
 
-  const handleUserLeft = (signal: SignalMessage) => {
-    const peerId = signal.from;
-
-    console.log(`User left: ${peerId}, cleaning up...`);
-
-    // Đóng kết nối peer nếu có
-    if (peersRef.current[peerId]) {
-      try {
-        peersRef.current[peerId].close();
-        delete peersRef.current[peerId];
-      } catch (err) {
-        console.error(`Error closing peer connection for ${peerId}:`, err);
-      }
-    }
-
-    // Cập nhật state
-    setPeers((prev) => {
-      const newPeers = { ...prev };
-      delete newPeers[peerId];
-      return newPeers;
-    });
-
-    // Loại bỏ khỏi danh sách người tham gia
-    setParticipants((prev) => prev.filter((p) => p.peerId !== peerId));
-    participantRef.current = participantRef.current.filter(
-      (p) => p.peerId !== peerId
-    );
-  };
-  const handleWebRTCSignal = (signal: SignalMessage) => {
-    if (signal.to !== me.peerId) return;
-
-    const peerId = signal.from;
-
+  const handleAllSignal = (signal: SignalMessage) => {
     switch (signal.type) {
       case "offer":
+        if (signal.to !== me.peerId) return;
         console.log("Received offer from:", signal.from);
         handleOffer(signal);
         break;
       case "answer":
+        if (signal.to !== me.peerId) return;
         console.log("Received answer from:", signal.from);
         handleAnswer(signal);
         break;
-      case "ice-candidate":
+      case "ice-candidate": {
+        if (signal.to !== me.peerId) return;
+        const peerId = signal.from;
         console.log("Received ICE candidate from:", signal.from);
         const peer = peersRef.current[peerId];
         if (peer) {
@@ -348,6 +365,59 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
           console.warn(`No peer found for ICE candidate from ${peerId}`);
         }
         break;
+      }
+      case "has-mic":
+        console.log("User has mic:", signal.from);
+        if (signal.from !== me.peerId) setHasMic(true);
+        break;
+      case "end-mic":
+        console.log("User ended mic:", signal.from);
+        setHasMic(false);
+        break;
+      case "clear-mic":
+        {
+          if (signal.from === me.peerId) return;
+          console.log("User cleared mic:", signal.from);
+          // Tắt microphone
+          console.log(stream);
+          if (!stream) return;
+          const audioTrack = stream?.getAudioTracks()[0];
+          if (audioTrack) {
+            audioTrack.enabled = false;
+            setMuted(true);
+          }
+          setHasMic(false);
+        }
+        break;
+
+      case "raised-hands":
+        console.log("User raised hand:", signal.from);
+        if (signal.from !== me.peerId) {
+          setTakeHands((prev) => [...prev, signal.from]);
+          setTimeout(() => {
+            setTakeHands((prev) =>
+              prev.filter((peerId) => peerId !== signal.from)
+            );
+          }, 50000);
+        }
+        break;
+      case "lower-hands":
+        console.log("User lowered hand:", signal.from);
+        if (signal.from !== me.peerId) {
+          setTakeHands((prev) =>
+            prev.filter((peerId) => peerId !== signal.from)
+          );
+        }
+        break;
+      case "chat":
+        console.log("Received chat message:", signal.payload);
+        handleChatMessage(signal);
+        break;
+      case "user-left":
+        console.log("User left:", signal.from);
+        handleUserLeft(signal);
+        break;
+
       default:
         console.warn("Unknown signal type:", signal.type);
     }
@@ -427,6 +497,78 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     }
   };
 
+  const handleUserLeft = (signal: SignalMessage) => {
+    if (signal.from === me.peerId) {
+      // Người dùng tự rời khỏi phòng
+      // Đóng tất cả kết nối peer
+      Object.entries(peersRef.current).forEach(([peerId, peer]) => {
+        try {
+          console.log(`Closing peer connection with ${peerId}`);
+          peer.close();
+        } catch (err) {
+          console.error(`Error closing peer ${peerId}:`, err);
+        }
+      });
+      peersRef.current = {};
+      setPeers({});
+
+      // Dừng tất cả stream
+      if (stream) {
+        stream.getTracks().forEach((track) => {
+          track.stop();
+          console.log("Stopped local media track:", track.kind);
+        });
+      }
+
+      if (screenStream.current) {
+        screenStream.current.getTracks().forEach((track) => {
+          track.stop();
+          console.log("Stopped screen share track:", track.kind);
+        });
+        screenStream.current = null;
+        setScreenShare(false);
+      }
+
+      // Ngắt kết nối WebSocket
+      if (stompClient.current) {
+        stompClient.current.deactivate();
+        stompClient.current = null;
+      }
+
+      // Reset danh sách người tham gia
+      setParticipants([]);
+      participantRef.current = [];
+      handleLeave();
+    } else {
+      // Người khác rời khỏi phòng
+      const peerId = signal.from;
+      console.log(`User left: ${peerId}, cleaning up...`);
+
+      // Đóng kết nối peer nếu có
+      if (peersRef.current[peerId]) {
+        try {
+          peersRef.current[peerId].close();
+          delete peersRef.current[peerId];
+        } catch (err) {
+          console.error(`Error closing peer connection for ${peerId}:`, err);
+        }
+      }
+
+      // Cập nhật state
+      setPeers((prev) => {
+        const newPeers = { ...prev };
+        delete newPeers[peerId];
+        return newPeers;
+      });
+
+      // Loại bỏ khỏi danh sách người tham gia
+      setParticipants((prev) => prev.filter((p) => p.peerId !== peerId));
+      participantRef.current = participantRef.current.filter(
+        (p) => p.peerId !== peerId
+      );
+    }
+  };
+
   const updateParticipantsList = (signals: SignalMessage[]) => {
     console.log("Updating participants list with:", signals);
 
@@ -463,6 +605,32 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         createPeerConnection(participant.peerId, false);
       }
     });
+  };
+
+  useEffect(() => {
+    sendSignal({
+      type: "participants-length",
+      from: me.peerId,
+      to: "all",
+      member: me,
+      payload: {
+        count: participants.length,
+        meetingCode: currentMeeting.meetingCode,
+      },
+    });
+  }, [currentMeeting.meetingCode, participants]);
+
+  const handleChatMessage = (signal: SignalMessage) => {
+    const chatMessage: ChatType = {
+      id: Date.now(),
+      sender: signal.member,
+      message: signal.payload.message,
+      receiver: signal.to,
+      type: signal.payload.type,
+      file: signal.payload.file,
+      timestamp: signal.payload.timestamp,
+    };
+    setChats((prev) => [...prev, chatMessage]);
   };
 
   const createPeerConnection = (peerId: string, isInitiator: boolean) => {
@@ -583,8 +751,8 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   };
 
   const sendSignal = (signal: SignalMessage) => {
-    console.log("Sending signal:", signal.type, "to:", signal.to);
     if (stompClient.current?.connected) {
+      console.log("Sending signal:", signal.type, "to:", signal.to);
       stompClient.current.publish({
         destination: `/app/signal/${meetingCode}`,
         body: JSON.stringify(signal),
@@ -633,67 +801,14 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     setLoading(false);
   };
 
-  const disconnect = () => {
-    if (stompClient.current) {
-      stompClient.current.deactivate();
-    }
-
-    // Clean up peer connections
-    Object.values(peersRef.current).forEach((peer) => peer.close());
-    peersRef.current = {};
-    setPeers({});
-    setParticipants([]);
-  };
   const leaveMeeting = () => {
-    // Gửi thông báo rời phòng tới server và các peer khác
-    if (stompClient.current?.connected) {
-      sendSignal({
-        type: "user-left",
-        from: me.peerId,
-        to: "all",
-        member: me,
-        payload: null,
-      });
-    }
-
-    // Đóng tất cả kết nối peer
-    Object.entries(peersRef.current).forEach(([peerId, peer]) => {
-      try {
-        console.log(`Closing peer connection with ${peerId}`);
-        peer.close();
-      } catch (err) {
-        console.error(`Error closing peer ${peerId}:`, err);
-      }
+    sendSignal({
+      type: "user-left",
+      from: me.peerId,
+      to: "all",
+      member: me,
+      payload: {},
     });
-    peersRef.current = {};
-    setPeers({});
-
-    // Dừng tất cả stream
-    if (stream) {
-      stream.getTracks().forEach((track) => {
-        track.stop();
-        console.log("Stopped local media track:", track.kind);
-      });
-    }
-
-    if (screenStream.current) {
-      screenStream.current.getTracks().forEach((track) => {
-        track.stop();
-        console.log("Stopped screen share track:", track.kind);
-      });
-      screenStream.current = null;
-      setScreenShare(false);
-    }
-
-    // Ngắt kết nối WebSocket
-    if (stompClient.current) {
-      stompClient.current.deactivate();
-      stompClient.current = null;
-    }
-
-    // Reset danh sách người tham gia
-    setParticipants([]);
-    participantRef.current = [];
   };
 
   const toggleScreenShare = async () => {
@@ -712,7 +827,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         // Quay lại sử dụng camera (nếu được bật)
         try {
           const newStream = await navigator.mediaDevices.getUserMedia({
-            video: !videoOff && isCameraEnable,
+            video: !videoOff,
             audio: !muted,
           });
 
@@ -808,13 +923,76 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     }
   };
 
+  const handleSendAudio = async (audioBlob: File) => {
+    const respone = await saveAudio(meetingCode, audioBlob);
+    if (respone.code === 200) {
+      console.log("Audio saved successfully:", respone);
+    }
+    setAudioChunks([]);
+    setMediaRecorder(null);
+  };
+
   const toggleMute = () => {
-    if (stream) {
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setMuted(!audioTrack.enabled);
+    if (!stream) return;
+    const audioTrack = stream.getAudioTracks()[0];
+    if (!audioTrack) return;
+
+    audioTrack.enabled = !audioTrack.enabled;
+    setMuted(!audioTrack.enabled);
+
+    if (audioTrack.enabled) {
+      // Bật microphone và bắt đầu ghi âm
+      const mediaRecorder = new MediaRecorder(stream);
+      const audioChunks: Blob[] = [];
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+
+        try {
+          // Chuyển đổi từ webm sang wav trước khi gửi lên server
+          const wavBlob = await convertWebMToWav(audioBlob);
+          const audioFile = new File([wavBlob], `recording-${Date.now()}.wav`, {
+            type: "audio/wav",
+          });
+
+          await handleSendAudio(audioFile);
+        } catch (error) {
+          console.error("Error processing audio:", error);
+          setError("Lỗi xử lý file ghi âm");
+        }
+      };
+      mediaRecorder.start();
+      setMediaRecorder(mediaRecorder);
+
+      // Gửi tín hiệu có microphone
+      sendSignal({
+        type: "has-mic",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: {},
+      });
+    } else {
+      // Dừng ghi âm và tắt microphone
+      if (mediaRecorder) {
+        mediaRecorder.stop();
       }
+      setMediaRecorder(null);
+      setAudioChunks([]);
+
+      // Tắt microphone
+      sendSignal({
+        type: "end-mic",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: {},
+      });
     }
   };
 
@@ -824,7 +1002,54 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled;
         setVideoOff(!videoTrack.enabled);
+
+        // Nếu đang bật camera và stream hiện tại không có video track
+        if (videoTrack.enabled && !stream.getVideoTracks().length) {
+          // Thêm lại video track nếu cần
+          navigator.mediaDevices
+            .getUserMedia({ video: true })
+            .then((newStream) => {
+              const newVideoTrack = newStream.getVideoTracks()[0];
+              stream.addTrack(newVideoTrack);
+
+              // Cập nhật peer connections
+              Object.values(peersRef.current).forEach((peer) => {
+                peer.addTrack(newVideoTrack, stream);
+              });
+            });
+        }
       }
+    }
+  };
+  const handleTurnOffAllMic = () => {
+    sendSignal({
+      type: "clear-mic",
+      from: me.peerId,
+      to: "all",
+      member: me,
+      payload: {},
+    });
+  };
+
+  const sendRaisedHand = () => {
+    if (isTakeHand) {
+      setIsTakeHand(false);
+      sendSignal({
+        type: "lower-hands",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: {},
+      });
+    } else {
+      setIsTakeHand(true);
+      sendSignal({
+        type: "raised-hands",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: {},
+      });
     }
   };
 
@@ -834,137 +1059,257 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   }, []);
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-      <div className="w-full max-w-6xl bg-white rounded-lg shadow-lg overflow-hidden">
-        <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
-          <h2 className="text-xl font-semibold">Phòng họp: {meetingCode}</h2>
+    <div className="flex flex-col items-center justify-center bg-gray-100 fixed top-0 left-0 h-screen w-screen z-50">
+      <div className="w-full h-full bg-white shadow-lg overflow-hidden">
+        <div className="px-4 py-2 bg-black text-white flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <span className="bg-blue-500 px-3 py-1 rounded-full text-sm">
-              {participants.length + 1} người tham gia
-            </span>
+            <img src={logo} alt="logo" className="size-12" />
+            <h2 className="text-base text-white font-semibold uppercase">
+              {currentMeeting.name}
+            </h2>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* Controls */}
+            <div className="flex flex-wrap justify-center gap-3">
+              {hasMic && (
+                <button
+                  onClick={handleTurnOffAllMic}
+                  className={`flex items-center gap-2 p-2 rounded-md relative group text-gray-50`}
+                >
+                  <LucideMicOff size={24} />
+                  <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                    Tắt tất cả mic
+                  </span>
+                </button>
+              )}
+              <button
+                onClick={sendRaisedHand}
+                className={`flex items-center gap-2 p-2 rounded-md relative group ${
+                  isTakeHand ? " text-yellow-400" : " text-gray-300"
+                } `}
+              >
+                <LucideHand size={24} />
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                  Giơ tay
+                </span>
+              </button>
+              <button
+                onClick={() => {
+                  setShowChat(!showChat);
+                  setShowParticipants(false);
+                }}
+                className={`flex items-center gap-2 p-2 rounded-md relative group ${
+                  showChat ? " text-yellow-500" : " text-gray-300"
+                } `}
+              >
+                <span className="absolute top-2 right-2 bg-red-600 h-2.5 w-2.5 rounded-full"></span>
+                <LucideMessageCircleMore size={24} />
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                  Nhắn tin
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setShowParticipants(!showParticipants);
+                  setShowChat(false);
+                }}
+                className={`relative flex items-center gap-2 p-2 rounded-md group ${
+                  showParticipants ? " text-yellow-500" : " text-gray-300"
+                } `}
+              >
+                <span
+                  className={`absolute top-0 right-0 font-bold text-sm ${
+                    takeHands.length > 0 ? "text-yellow-500" : "text-gray-300"
+                  }`}
+                >
+                  {takeHands.length > 0 ? takeHands.length : ""}
+                </span>
+                <LucideUsersRound size={24} />
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 text-gray-300">
+                  Danh sách người tham gia
+                </span>
+              </button>
+
+              <button
+                onClick={() => toggleMute()}
+                disabled={hasMic}
+                className={`relative flex items-center gap-2 p-2 rounded-md group ${
+                  muted ? "text-red-700" : " text-gray-300"
+                } `}
+              >
+                {muted ? <LucideMicOff size={24} /> : <LucideMic size={24} />}
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 text-gray-50">
+                  {muted ? "Bật mic" : "Tắt mic"}
+                </span>
+              </button>
+
+              <button
+                onClick={toggleVideo}
+                className={`relative flex items-center gap-2 p-2 rounded-md group ${
+                  videoOff ? "text-red-700" : " text-gray-300"
+                } `}
+              >
+                {videoOff ? (
+                  <LucideVideoOff size={24} />
+                ) : (
+                  <LucideVideo size={24} />
+                )}
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                  {videoOff ? "Bật camera" : "Tắt camera"}
+                </span>
+              </button>
+
+              <button
+                onClick={toggleScreenShare}
+                className={`relative flex items-center gap-2 p-2 rounded-md group ${
+                  screenShare ? " text-blue-700" : " text-gray-300"
+                } `}
+              >
+                <LucideScreenShare size={24} />
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                  Chia sẻ màn hình
+                </span>
+              </button>
+
+              <button
+                onClick={leaveMeeting}
+                className="flex items-center gap-2 px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700"
+              >
+                <FaPhone /> Rời phòng
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Video của mình */}
-          <div className="relative rounded-lg overflow-hidden bg-black">
-            <video
-              playsInline
-              muted
-              ref={myVideo}
-              autoPlay
-              className="w-full h-auto"
-            />
-            <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2 flex justify-between items-center">
-              <span>{me.name} (Bạn)</span>
-              <div className="flex gap-1">
-                {muted && <FaMicrophoneSlash className="text-red-400" />}
-                {videoOff && <FaVideoSlash className="text-red-400" />}
-                {screenShare && <FaDesktop className="text-blue-400" />}
-              </div>
-            </div>
-          </div>
-
-          {/* Video của người tham gia */}
-          {Object.values(peers).map((peer) => (
-            <div
-              key={peer.id}
-              className="relative rounded-lg overflow-hidden bg-black"
-            >
+        {/* Phan noi dung */}
+        <div className="flex h-full">
+          <div
+            className={`bg-gray-900  gap-1 items-center w-full ${
+              countParticipants > 8
+                ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 3xl:grid-cols-6"
+                : countParticipants > 4
+                ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+                : countParticipants > 3
+                ? "grid gird-cols-2 md:grid-cols-3 lg:grid-cols-4"
+                : "flex justify-center"
+            }`}
+          >
+            {/* Video của mình */}
+            <div className="relative overflow-hidden bg-black h-auto w-auto">
               <video
                 playsInline
-                ref={(video) => {
-                  if (video && peer.stream) {
-                    video.srcObject = peer.stream;
-                  }
-                }}
+                muted
+                ref={myVideo}
                 autoPlay
                 className="w-full h-auto"
               />
-              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2">
-                {peer.user.name}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Controls */}
-        <div className="p-4 bg-gray-50 border-t border-gray-200 flex flex-wrap justify-center gap-3">
-          <button
-            onClick={toggleMute}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md ${
-              muted ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-700"
-            } hover:bg-gray-300`}
-          >
-            {muted ? <FaMicrophoneSlash /> : <FaMicrophone />}
-            {muted ? "Bật mic" : "Tắt mic"}
-          </button>
-
-          <button
-            onClick={toggleVideo}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md ${
-              videoOff ? "bg-red-100 text-red-700" : "bg-gray-200 text-gray-700"
-            } hover:bg-gray-300`}
-          >
-            {videoOff ? <FaVideoSlash /> : <FaVideo />}
-            {videoOff ? "Bật camera" : "Tắt camera"}
-          </button>
-
-          <button
-            onClick={toggleScreenShare}
-            className={`flex items-center gap-2 px-4 py-2 rounded-md ${
-              screenShare
-                ? "bg-blue-100 text-blue-700"
-                : "bg-gray-200 text-gray-700"
-            } hover:bg-gray-300`}
-          >
-            <FaDesktop />
-            {screenShare ? "Dừng chia sẻ" : "Chia sẻ màn hình"}
-          </button>
-
-          <button
-            onClick={leaveMeeting}
-            className="flex items-center gap-2 px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700"
-          >
-            <FaPhone /> Rời phòng
-          </button>
-        </div>
-
-        {/* Danh sách người tham gia */}
-        <div className="p-4 border-t border-gray-200">
-          <div className="flex items-center gap-2 text-gray-700 mb-3">
-            <FaUserFriends />
-            <h3 className="font-medium">
-              Danh sách người tham gia ({participants.length + 1})
-            </h3>
-          </div>
-
-          <div className="bg-gray-50 rounded-lg p-3">
-            <div className="flex items-center gap-3 p-2 border-b border-gray-200">
-              <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-medium">
-                {me.name.charAt(0)}
-              </div>
-              <div>
-                <p className="font-medium">{me.name}</p>
-                <p className="text-sm text-gray-500">Bạn</p>
-              </div>
-            </div>
-
-            {participants.map((participant) => (
-              <div
-                key={participant.peerId}
-                className="flex items-center gap-3 p-2 border-b border-gray-200 last:border-0"
-              >
-                <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white text-sm font-medium">
-                  {participant.name.charAt(0)}
+              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2 flex justify-between items-center">
+                <span>{me.name} (Bạn)</span>
+                <div className="flex gap-1">
+                  {muted && <FaMicrophoneSlash className="text-red-400" />}
+                  {videoOff && <FaVideoSlash className="text-red-400" />}
+                  {screenShare && <FaDesktop className="text-blue-400" />}
                 </div>
-                <div>
-                  <p className="font-medium">{participant.name}</p>
-                  <p className="text-sm text-gray-500">{participant.id}</p>
+              </div>
+            </div>
+
+            {/* Video của người tham gia */}
+            {Object.values(peers).map((peer) => (
+              <div
+                key={peer.id}
+                className="relative overflow-hidden bg-black h-fit w-fit"
+              >
+                <video
+                  playsInline
+                  ref={(video) => {
+                    if (video && peer.stream) {
+                      video.srcObject = peer.stream;
+                    }
+                  }}
+                  autoPlay
+                  className="w-full h-auto"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2">
+                  {peer.user.name}
                 </div>
               </div>
             ))}
           </div>
+
+          {/* Danh sách người tham gia */}
+          {showParticipants && (
+            <div className="p-4 w-1/4 bg-gray-950">
+              <div className="flex items-center gap-2 text-white mb-3">
+                <FaUserFriends />
+                <h3 className="font-medium">
+                  Danh sách người tham gia ({participants.length + 1})
+                </h3>
+              </div>
+
+              <div className=" p-3">
+                <div className="flex items-center gap-3 p-2 border-b border-gray-200">
+                  <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-white text-sm font-medium">
+                    {me.img ? (
+                      <img
+                        src={me.img}
+                        alt="avatar"
+                        className="w-full h-full rounded-full"
+                      />
+                    ) : (
+                      <span>{me.name.charAt(0)}</span>
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-50">{me.name}</p>
+                    <p className="text-sm text-gray-50">Bạn</p>
+                  </div>
+                </div>
+
+                {participants.map((participant) => (
+                  <div
+                    key={participant.peerId}
+                    className="flex items-center gap-3 p-2 border-b border-gray-200 relative"
+                  >
+                    <div className="w-8 h-8 rounded-full bg-green-500 flex items-center justify-center text-white text-sm font-medium">
+                      {participant.img ? (
+                        <img
+                          src={participant.img}
+                          alt="avatar"
+                          className="w-full h-full rounded-full"
+                        />
+                      ) : (
+                        <span>{participant.name.charAt(0)}</span>
+                      )}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-50">
+                        {participant.name}
+                      </p>
+                      <p className="text-sm text-gray-50">{participant.id}</p>
+                    </div>
+                    {takeHands.includes(participant.peerId) && (
+                      <div className="absolute top-1/2 -translate-y-full right-6 text-yellow-500 h-2.5 w-2.5 rounded-full">
+                        <LucideHand />
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {/* Chat */}
+          {showChat && (
+            <div className="w-1/4 bg-gray-100 h-full overflow-hidden">
+              {/* Chat content goes here */}
+              <ChatComponent
+                chats={chats}
+                member={me}
+                sendSignal={sendSignal}
+                meetingCode={meetingCode}
+              />
+            </div>
+          )}
         </div>
       </div>
 

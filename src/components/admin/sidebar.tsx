@@ -4,7 +4,7 @@ import React from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { cn } from "../../lib/utils";
-import { CalendarDays, Home, Users, Building2, User } from "lucide-react";
+import { Home, Users, Building2, Building } from "lucide-react";
 import LogoutButton from "./LogoutButton";
 
 const routes = [
@@ -12,31 +12,25 @@ const routes = [
     label: "Tổng quan",
     icon: Home,
     href: "/dashboard",
-    role: "user",
-  },
-  {
-    label: "Phòng họp",
-    icon: Building2,
-    href: "/dashboard/rooms",
-    role: "user",
+    role: "ROLE_ADMIN",
   },
   {
     label: "Tài khoản",
     icon: Users,
     href: "/dashboard/accounts",
-    role: "manager",
+    role: "ROLE_ADMIN",
   },
   {
-    label: "Cuộc họp",
-    icon: CalendarDays,
-    href: "/dashboard/meetings",
-    role: "user",
+    label: "Phòng ban",
+    icon: Building2,
+    href: "/dashboard/rooms",
+    role: "ROLE_ADMIN",
   },
   {
-    label: "Trang cá nhân",
-    icon: User,
-    href: "/dashboard/profile",
-    role: "user",
+    label: "Phòng họp",
+    icon: Building,
+    href: "/dashboard/meeting-rooms",
+    role: "ROLE_ADMIN",
   },
 ];
 
@@ -56,10 +50,11 @@ const Sidebar: React.FC = () => {
               <NavLink
                 key={route.href}
                 to={route.href}
+                end={true}
                 className={({ isActive }) =>
                   cn(
-                    "flex items-center flex-col gap-3 rounded-lg py-2 text-muted-foreground text-gray-600 transition-all hover:text-black",
-                    isActive && "bg-muted font-medium text-black"
+                    "flex items-center flex-col gap-3 rounded-lg py-2 text-muted-foreground transition-all hover:text-blue-600",
+                    isActive ? " text-blue-600" : "text-gray-600"
                   )
                 }
               >

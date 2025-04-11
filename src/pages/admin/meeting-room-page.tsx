@@ -30,31 +30,30 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { Plus, Pencil, Trash2 } from "lucide-react";
-import { DepartmentType } from "../../interface/department";
-import {
-  createDepartment,
-  deleteDepartment,
-  getAllDepartments,
-  updateDepartment,
-} from "../../services/departmentService";
-import { toast } from "react-toastify";
 
-export default function RoomsPage() {
-  const [rooms, setRooms] = useState<DepartmentType[]>([]);
+import { toast } from "react-toastify";
+import { RoomType } from "../../interface/room";
+import {
+  createRoom,
+  deleteRoom,
+  getAllRooms,
+  updateRoom,
+} from "../../services/roomService";
+
+export default function MeetingRoomPage() {
+  const [rooms, setRooms] = useState<RoomType[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [newRoom, setNewRoom] = useState({
-    departmentCode: "",
-    name: "",
+    roomCode: "",
+    roomName: "",
   });
-  const [progressDepartment, setProgressDepartment] = useState<DepartmentType>(
-    {} as DepartmentType
-  );
+  const [progressRoom, setProgressRoom] = useState<RoomType>({} as RoomType);
 
   useEffect(() => {
     const fetchDepartments = async () => {
       try {
-        const response = await getAllDepartments();
+        const response = await getAllRooms();
         if (!response || response.code !== 200) {
           throw new Error("Failed to fetch departments");
         }
@@ -68,50 +67,50 @@ export default function RoomsPage() {
   }, []);
 
   const handleAddRoom = async () => {
-    const departmentToAdd = {
-      departmentCode: newRoom.departmentCode,
-      name: newRoom.name,
+    const roomToAdd = {
+      roomCode: newRoom.roomCode,
+      roomName: newRoom.roomName,
     };
-    const response = await createDepartment(departmentToAdd);
-    if (!response || response.code !== 200) {
+    const response = await createRoom(roomToAdd);
+    if (!response || response.code !== 201) {
       throw new Error("Failed to create room");
     }
     setRooms((prev) => [...prev, response.result]);
-    toast.success("Thêm phòng ban thành công");
-    setNewRoom({ name: "", departmentCode: "" });
+    toast.success("Thêm phòng thành công");
+    setNewRoom({ roomCode: "", roomName: "" });
     setIsAddDialogOpen(false);
   };
 
   const handleUpdateRoom = async (id: number) => {
-    const departmentToUpdate = {
-      departmentCode: newRoom.departmentCode,
-      name: newRoom.name,
+    const roomToUpdate = {
+      roomCode: newRoom.roomCode,
+      roomName: newRoom.roomName,
     };
-    const response = await updateDepartment(id, departmentToUpdate);
+    const response = await updateRoom(id, roomToUpdate);
     console.log(response);
     if (!response || response.code !== 200) {
       throw new Error("Failed to update room");
     }
+    toast.success("Cập nhật phòng thành công");
     setRooms((prev) =>
       prev.map((room) => (room.id === id ? response.result : room))
     );
-    toast.success("Cập nhật phòng ban thành công");
-    setNewRoom({ name: "", departmentCode: "" });
+    setNewRoom({ roomCode: "", roomName: "" });
     setIsEditDialogOpen(false);
   };
 
-  const handleDeleteDepartment = async (id: number) => {
+  const handleDeleteRoom = async (id: number) => {
     const confirmDelete = window.confirm(
-      "Bạn có chắc chắn muốn xóa phòng ban này? Hành động này không thể hoàn tác."
+      "Bạn có chắc chắn muốn xóa phòng này? Hành động này không thể hoàn tác."
     );
     if (!confirmDelete) return;
-    const response = await deleteDepartment(id);
+    const response = await deleteRoom(id);
     console.log(response);
-    if (!response || response.code !== 204) {
-      toast.error("Xóa phòng ban thất bại");
+    if (!response || response.code !== 200) {
+      toast.error("Xóa phòng thất bại");
       return;
     }
-    toast.success("Xóa phòng ban thành công");
+    toast.success("Xóa phòng thành công");
     setRooms(rooms.filter((room) => room.id !== id));
   };
 
@@ -119,25 +118,23 @@ export default function RoomsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
-            Quản lý phòng ban
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight">Quản lý phòng</h1>
           <p className="text-muted-foreground">
-            Quản lý danh sách phòng ban trong tổ chức của bạn
+            Quản lý danh sách phòng trong tổ chức của bạn
           </p>
         </div>
         <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
           <DialogTrigger asChild>
             <Button className="flex items-center gap-2">
               <Plus className="h-4 w-4" />
-              Thêm phòng ban
+              Thêm phòng
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Thêm phòng ban mới</DialogTitle>
+              <DialogTitle>Thêm phòng mới</DialogTitle>
               <DialogDescription>
-                Nhập thông tin phòng ban mới để thêm vào danh sách
+                Nhập thông tin phòng mới để thêm vào danh sách
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -145,9 +142,9 @@ export default function RoomsPage() {
                 <Label htmlFor="departmentCode">Mã phòng</Label>
                 <Input
                   id="departmentCode"
-                  value={newRoom.departmentCode}
+                  value={newRoom.roomCode}
                   onChange={(e) =>
-                    setNewRoom({ ...newRoom, departmentCode: e.target.value })
+                    setNewRoom({ ...newRoom, roomCode: e.target.value })
                   }
                 />
               </div>
@@ -155,9 +152,9 @@ export default function RoomsPage() {
                 <Label htmlFor="name">Tên phòng</Label>
                 <Input
                   id="name"
-                  value={newRoom.name}
+                  value={newRoom.roomName}
                   onChange={(e) =>
-                    setNewRoom({ ...newRoom, name: e.target.value })
+                    setNewRoom({ ...newRoom, roomName: e.target.value })
                   }
                 />
               </div>
@@ -169,7 +166,7 @@ export default function RoomsPage() {
               >
                 Hủy bỏ
               </Button>
-              <Button onClick={handleAddRoom}>Thêm phòng ban</Button>
+              <Button onClick={handleAddRoom}>Thêm phòng</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -177,34 +174,32 @@ export default function RoomsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Phòng ban</CardTitle>
+          <CardTitle>Phòng</CardTitle>
           <CardDescription>
-            Danh sách các phòng ban trong tổ chức của bạn
+            Danh sách các phòng trong tổ chức của bạn
           </CardDescription>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Mã phòng ban</TableHead>
-                <TableHead>Tên phòng ban</TableHead>
+                <TableHead>Mã phòng</TableHead>
+                <TableHead>Tên phòng</TableHead>
                 <TableHead className="text-right"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rooms.map((room) => (
                 <TableRow key={room.id}>
-                  <TableCell className="font-medium">
-                    {room.departmentCode}
-                  </TableCell>
-                  <TableCell className="font-medium">{room.name}</TableCell>
+                  <TableCell className="font-medium">{room.roomCode}</TableCell>
+                  <TableCell className="font-medium">{room.roomName}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          setProgressDepartment(room);
+                          setProgressRoom(room);
                           setIsEditDialogOpen(true);
                         }}
                       >
@@ -213,7 +208,7 @@ export default function RoomsPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDeleteDepartment(room.id)}
+                        onClick={() => handleDeleteRoom(room.id)}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -228,9 +223,9 @@ export default function RoomsPage() {
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cập nhật phòng ban</DialogTitle>
+            <DialogTitle>Cập nhật phòng </DialogTitle>
             <DialogDescription>
-              Nhập thông tin phòng ban để cập nhật
+              Nhập thông tin phòng để cập nhật
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -238,11 +233,11 @@ export default function RoomsPage() {
               <Label htmlFor="departmentCode">Mã phòng</Label>
               <Input
                 id="departmentCode"
-                defaultValue={progressDepartment.departmentCode}
+                defaultValue={progressRoom.roomCode}
                 onChange={(e) =>
                   setNewRoom({
-                    ...progressDepartment,
-                    departmentCode: e.target.value,
+                    ...progressRoom,
+                    roomCode: e.target.value,
                   })
                 }
               />
@@ -251,11 +246,11 @@ export default function RoomsPage() {
               <Label htmlFor="name">Tên phòng</Label>
               <Input
                 id="name"
-                defaultValue={progressDepartment.name}
+                defaultValue={progressRoom.roomName}
                 onChange={(e) =>
                   setNewRoom({
-                    ...progressDepartment,
-                    name: e.target.value,
+                    ...progressRoom,
+                    roomName: e.target.value,
                   })
                 }
               />
@@ -269,11 +264,9 @@ export default function RoomsPage() {
               Hủy bỏ
             </Button>
             <Button
-              onClick={() =>
-                progressDepartment && handleUpdateRoom(progressDepartment.id)
-              }
+              onClick={() => progressRoom && handleUpdateRoom(progressRoom.id)}
             >
-              Cập nhật phòng ban
+              Cập nhật phòng
             </Button>
           </DialogFooter>
         </DialogContent>

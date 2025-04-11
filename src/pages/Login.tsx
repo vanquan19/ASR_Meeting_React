@@ -22,7 +22,7 @@ export default function Login() {
   const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<ErrorValidateLogin>({});
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, hasPermission, isAuthenticated } = useAuth();
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError({
@@ -57,10 +57,9 @@ export default function Login() {
       });
       return;
     }
-    console.log(response);
-    if (response.isAuthenticated && response.user.role === "ROLE_ADMIN") {
+    if (isAuthenticated && hasPermission("ROLE_ADMIN")) {
       navigate("/dashboard");
-    } else if (response.isAuthenticated) {
+    } else if (isAuthenticated) {
       navigate("/meeting-room");
     } else {
       setError({
@@ -147,7 +146,10 @@ export default function Login() {
             style={{ backgroundImage: `url(${bgLogin})` }}
           >
             <div className="absolute -top-2 -right-2 w-12 h-12 bg-white flex items-center justify-center rounded-4xl rounded-tr-none">
-              <button className="p-2 md:cursor-pointer">
+              <button
+                onClick={() => navigate("/")}
+                className="p-2 md:cursor-pointer"
+              >
                 <CircleX size={24} />
               </button>
             </div>

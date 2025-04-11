@@ -7,7 +7,6 @@ import { Button } from "../../components/ui/button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "../../components/ui/card";
@@ -26,10 +25,13 @@ import {
 } from "../../components/ui/avatar";
 import { useAuth } from "../../context/AuthContext";
 import { UserType } from "../../interface/auth";
+import { Camera } from "lucide-react";
+import { changePassword, updateUser } from "../../services/userService";
+import { toast } from "react-toastify";
 
 export default function ProfilePage() {
   const { user } = useAuth();
-  console.log(user);
+
   const [profile, setProfile] = useState<UserType>(user as UserType);
 
   const [password, setPassword] = useState({
@@ -38,33 +40,77 @@ export default function ProfilePage() {
     confirm: "",
   });
 
-  const handleProfileUpdate = (e: React.FormEvent) => {
+  const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     // Handle profile update logic here
-    console.log("Profile updated:", profile);
-    // In a real app, you would send this data to your backend
+    const confirm = window.confirm(
+      "Bạn có chắc chắn muốn cập nhật thông tin cá nhân không?"
+    );
+    if (!confirm) return;
+
+    const response = await updateUser(profile.id, profile);
+    console.log(response);
+    if (response.code !== 200) {
+      toast.error("Cập nhật thông tin không thành công");
+      return;
+    }
+    toast.success("Cập nhật thông tin thành công");
+    setProfile({ ...profile });
   };
 
-  const handlePasswordChange = (e: React.FormEvent) => {
+  const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
     // Handle password change logic here
     if (password.new !== password.confirm) {
-      alert("New passwords don't match!");
+      toast.error("Mật khẩu xác nhận không khớp");
       return;
     }
-    console.log("Password changed");
+    const response = await changePassword({
+      oldPassword: password.current,
+      newPassword: password.new,
+    });
+    console.log(response);
+    if (response.code !== 200) {
+      toast.error("Cập nhật mật khẩu không thành công");
+      return;
+    }
+    toast.success("Cập nhật mật khẩu thành công");
     setPassword({ current: "", new: "", confirm: "" });
   };
 
   return (
     <div className="space-y-6 ">
-      <div className="flex flex-col gap-6 md:flex-row">
-        <Card className="w-full md:w-1/3">
+      <div className="flex flex-col gap-6 md:flex-row h-fit">
+        <Card className="w-full  md:w-1/3">
           <CardContent className="flex flex-col items-center space-y-4 p-8">
-            <Avatar className="size-2/3">
-              <AvatarImage src={user?.img || ""} />
-              <AvatarFallback>JD</AvatarFallback>
-            </Avatar>
+            <div className="flex justify-center items-center">
+              <label
+                htmlFor="avatar-upload"
+                className="md:cursor-pointer relative w-40 h-40"
+              >
+                <Avatar className="size-full ">
+                  <AvatarImage src={user?.img || ""} />
+                  <AvatarFallback>JD</AvatarFallback>
+                </Avatar>
+                <Camera className="absolute bottom-0 right-0 -translate-x-6 text-blue-600 bg-white rounded-full p-1 size-7" />
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                id="avatar-upload"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      setProfile({ ...profile, img: reader.result as string });
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+              />
+            </div>
             <div className="text-center">
               <h3 className="text-lg font-bold uppercase mt-5">
                 {profile.name}
@@ -118,6 +164,9 @@ export default function ProfilePage() {
             </TabsList>
             <TabsContent value="details" className="mt-4">
               <Card>
+                <CardHeader>
+                  <CardTitle>Thay đổi thông tin cá nhân</CardTitle>
+                </CardHeader>
                 <CardContent>
                   <form onSubmit={handleProfileUpdate}>
                     <div className="grid gap-4">
@@ -142,33 +191,89 @@ export default function ProfilePage() {
                           }
                         />
                       </div>
-
+                      <div className="flex gap-4">
+                        <div className="grid gap-2 w-full">
+                          <Label htmlFor="phone">Số điện thoại</Label>
+                          <Input
+                            id="phone"
+                            value={profile.phoneNumber}
+                            onChange={(e) =>
+                              setProfile({
+                                ...profile,
+                                phoneNumber: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="dob">Ngày sinh</Label>
+                          <Input
+                            id="dob"
+                            value={profile.dob}
+                            type="date"
+                            className="w-full"
+                            onChange={(e) =>
+                              setProfile({ ...profile, dob: e.target.value })
+                            }
+                          />
+                        </div>
+                      </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="phone">Phone Number</Label>
+                        <Label htmlFor="addrss">Địa chỉ</Label>
                         <Input
-                          id="phone"
-                          value={profile.phoneNumber}
+                          id="addrss"
+                          value={profile.address}
+                          onChange={(e) =>
+                            setProfile({ ...profile, address: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="identification">CCCD/Hộ chiếu</Label>
+                        <Input
+                          id="identification"
+                          value={profile.identification}
                           onChange={(e) =>
                             setProfile({
                               ...profile,
-                              phoneNumber: e.target.value,
+                              identification: e.target.value,
                             })
                           }
                         />
                       </div>
-                      <div className="grid gap-2">
-                        <Label htmlFor="bio">Ngay sinh</Label>
-                        <Input
-                          id="bio"
-                          value={profile.dob}
-                          onChange={(e) =>
-                            setProfile({ ...profile, dob: e.target.value })
-                          }
-                        />
+                      <div className="flex gap-4">
+                        <div className="grid gap-2 w-full">
+                          <Label htmlFor="bankName">Ngân hàng</Label>
+                          <Input
+                            id="bankName"
+                            value={profile.bankName}
+                            onChange={(e) =>
+                              setProfile({
+                                ...profile,
+                                bankName: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="grid gap-2 w-full">
+                          <Label htmlFor="bankNumber">Số tài khoản</Label>
+                          <Input
+                            id="bankNumber"
+                            value={profile.bankNumber}
+                            type="text"
+                            className="w-full"
+                            onChange={(e) =>
+                              setProfile({
+                                ...profile,
+                                bankNumber: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
                       </div>
                     </div>
                     <Button className="mt-4 bg-blue-400 text-white">
-                      Cap nhat mat khau
+                      Cập nhật thông tin
                     </Button>
                   </form>
                 </CardContent>
@@ -177,17 +282,14 @@ export default function ProfilePage() {
             <TabsContent value="password" className="mt-4">
               <Card>
                 <CardHeader>
-                  <CardTitle>Thay doi mat khau</CardTitle>
-                  <CardDescription>
-                    Hay cap nhat mat khau cua ban de bao mat tai khoan
-                  </CardDescription>
+                  <CardTitle>Thay đổi mật khẩu</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={handlePasswordChange}>
                     <div className="grid gap-4">
                       <div className="grid gap-2">
                         <Label htmlFor="current-password">
-                          Mat khau hien tai
+                          Mật khẩu hiện tại
                         </Label>
                         <Input
                           id="current-password"
@@ -202,7 +304,7 @@ export default function ProfilePage() {
                         />
                       </div>
                       <div className="grid gap-2">
-                        <Label htmlFor="new-password">Mat khau moi</Label>
+                        <Label htmlFor="new-password">Mật khẩu mới</Label>
                         <Input
                           id="new-password"
                           type="password"
@@ -214,7 +316,7 @@ export default function ProfilePage() {
                       </div>
                       <div className="grid gap-2">
                         <Label htmlFor="confirm-password">
-                          Xac nhan mat khau moi
+                          Xác nhận mật khẩu
                         </Label>
                         <Input
                           id="confirm-password"
@@ -230,7 +332,7 @@ export default function ProfilePage() {
                       </div>
                     </div>
                     <Button className="mt-4 bg-blue-400 text-white">
-                      Cap nhat mat khau
+                      Cập nhật mật khẩu
                     </Button>
                   </form>
                 </CardContent>
