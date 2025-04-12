@@ -22,7 +22,7 @@ export default function Login() {
   const [password, setPassword] = useState<string>("");
   const [error, setError] = useState<ErrorValidateLogin>({});
   const navigate = useNavigate();
-  const { login, hasPermission, isAuthenticated } = useAuth();
+  const { login, hasPermission } = useAuth();
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError({
@@ -57,14 +57,10 @@ export default function Login() {
       });
       return;
     }
-    if (isAuthenticated && hasPermission("ROLE_ADMIN")) {
+    if (response && hasPermission("ROLE_ADMIN")) {
       navigate("/dashboard");
-    } else if (isAuthenticated) {
+    } else if (response) {
       navigate("/meeting-room");
-    } else {
-      setError({
-        genaral: "Tài khoản hoặc mật khẩu không chính xác",
-      });
     }
   };
 
