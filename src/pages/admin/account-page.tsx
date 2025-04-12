@@ -110,7 +110,7 @@ export default function AccountsPage() {
       const response = await getAllUsers();
       console.log(response);
       if (response.code !== 200) {
-        alert("Lấy danh sách người dùng thất bại");
+        toast.error("Lỗi khi lấy danh sách người dùng");
         return;
       }
       setUsers(response.result);

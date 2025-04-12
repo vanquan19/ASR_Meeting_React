@@ -27,6 +27,8 @@ import { DepartmentType } from "../interface/department";
 import { useAuth } from "../context/AuthContext";
 import { getAllUsers } from "../services/userService";
 import { UserType } from "../interface/auth";
+import { toast } from "react-toastify";
+import { ROLE_MEETING } from "../constants/meeting";
 
 const colors = [
   "bg-blue-500",
@@ -124,8 +126,6 @@ export default function MeetingRoom() {
   //   );
   // };
 
-  console.log("dataMeetingRoom", dataMeetingRoom);
-
   useEffect(() => {
     const getData = async () => {
       let response;
@@ -134,7 +134,6 @@ export default function MeetingRoom() {
       } else {
         response = await getAllMeetingForUser(user.id);
       }
-      console.log(response);
       setDataMeetingRoom(response?.result || []);
     };
     getData();
@@ -345,7 +344,6 @@ const ModalCreateMeeting = ({
     const fetchData = async () => {
       // Fetch data for room and department
       const departmentResponse = await getAllDepartments();
-      console.log(departmentResponse);
       setDepartments(departmentResponse.result);
       const roomResponse = await getAllRooms();
       setRooms(roomResponse.result);
@@ -365,7 +363,7 @@ const ModalCreateMeeting = ({
       endTime,
     });
     if (response.code === 200) {
-      alert("Tạo cuộc họp thành công");
+      toast.success("Tạo cuộc họp thành công");
       setLoad(!load);
       setShowCreateMeeting(false);
       // Set current meeting
@@ -373,7 +371,7 @@ const ModalCreateMeeting = ({
       // Show add member modal
       setShowAddMember(true);
     } else {
-      alert("Tạo cuộc họp thất bại");
+      toast.error("Tạo cuộc họp thất bại");
     }
     setMeetingCode("");
     setMeetingName("");
@@ -503,13 +501,6 @@ const AddMemberToMeeting = ({
   setShowAddMember: (show: boolean) => void;
   meeting: MeetingType;
 }) => {
-  const ROLE_MEETING = [
-    { id: "COMMISSIONER", name: "Ủy viên" },
-    { id: "CRITIC", name: "Phê bình" },
-    { id: "GUEST", name: "Khách mời" },
-    { id: "PRESIDENT", name: "Chủ trì" },
-    { id: "SECRETARY", name: "Thư ký" },
-  ];
   const [members, setMembers] = useState<
     {
       member: UserType;
@@ -549,7 +540,6 @@ const AddMemberToMeeting = ({
   }, [search]);
 
   useEffect(() => {
-    console.log(meeting);
     const fetchData = async () => {
       const response = await getAllUsers();
       const responseMemberInMeeting = await getAllMemberInMeeting(
@@ -557,14 +547,13 @@ const AddMemberToMeeting = ({
         debounceSearch
       );
       if (response.code !== 200) {
-        alert("Lấy danh sách người dùng thất bại");
+        toast.error("Lấy danh sách người dùng thất bại");
         return;
       }
       if (responseMemberInMeeting.code !== 200) {
-        alert("Lấy danh sách người dùng trong cuộc họp thất bại");
+        toast.error("Lấy danh sách người dùng trong cuộc họp thất bại");
         return;
       }
-      console.log("responseMemberInMeeting", responseMemberInMeeting.result);
       setMembersInMeeting(responseMemberInMeeting.result);
       //add checked if response.result has member in meeting
       const membersWithoutMeeting = response.result
@@ -612,11 +601,7 @@ const AddMemberToMeeting = ({
   const handleChangeMember = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { value, checked } = e.target;
     const memberId = parseInt(value);
-    console.log(
-      "value",
-      e.target.parentElement?.parentElement?.getElementsByTagName("select")[0]
-        .value
-    );
+
     // update isChecked in members
     setMembers((prev) =>
       prev.map((m) =>
@@ -636,7 +621,6 @@ const AddMemberToMeeting = ({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (member: any) => member.user.id === memberId
       );
-      console.log("memberInMeeting", memberInMeeting);
       if (memberInMeeting) {
         setMembersToRemove((prev) => [
           ...prev,
@@ -757,26 +741,64 @@ const AddMemberToMeeting = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    console.log("membersToAdd", membersToAdd);
-    console.log("membersToRemove", membersToRemove);
-    console.log("membersToUpdate", membersToUpdate);
-
     try {
       //send request to add member to meeting
       for (const member of membersToAdd) {
         //check This member has duplicate time
-
-        //if not then add member to meeting
         const response = await addMemberToMeeting({
           userId: member.userId,
           meetingId: meeting.id,
           meetingRole: member.meetingRole,
         });
-        if (response.code !== 200) {
-          alert("Thêm thành viên thất bại");
+
+        if (response.code === 409) {
+          let user;
+          user = membersInDepartment.find(
+            (memberInMeeting) => memberInMeeting.member.id === member.userId
+          );
+          if (!user) {
+            user = members.find(
+              (memberInMeeting) => memberInMeeting.member.id === member.userId
+            );
+          }
+          const comfrim = window.confirm(
+            `Thành viên ${
+              user?.member.employeeCode + " - " + user?.member.name
+            } đã có trong cuộc họp khác vào thời gian này. Bạn có muốn thêm thành viên này không?`
+          );
+          if (!comfrim) {
+            continue;
+          } else {
+            const checkRespone = await addMemberToMeeting({
+              userId: member.userId,
+              meetingId: meeting.id,
+              meetingRole: member.meetingRole,
+              forceAdd: true,
+            });
+            if (checkRespone.code !== 200) {
+              toast.error(
+                `Chưa thể thêm thành viên ${
+                  user?.member.employeeCode + " - " + user?.member.name
+                } vào cuộc họp này`
+              );
+              return;
+            }
+            toast.success(
+              `Thêm thành viên ${
+                user?.member.employeeCode + " - " + user?.member.name
+              } thành công`
+            );
+          }
+        } else if (response.code === 200) {
+          toast.success(
+            `Thêm thành viên ${
+              response.result.user.employeeCode +
+              " - " +
+              response.result.user.name
+            } thành công`
+          );
           return;
         }
-        console.log("response", response);
       }
       //send request to remove member from meeting
       for (const member of membersToRemove) {
@@ -785,10 +807,9 @@ const AddMemberToMeeting = ({
           meetingId: meeting.id,
         });
         if (response.code !== 200) {
-          alert("Xóa thành viên thất bại");
+          toast.error("Xóa thành viên thất bại");
           return;
         }
-        console.log("response", response);
       }
       //send request to update member in meeting
       for (const member of membersToUpdate) {
@@ -798,13 +819,21 @@ const AddMemberToMeeting = ({
           meetingRole: member.meetingRole,
         });
         if (response.code !== 200) {
-          alert("Cập nhật thành viên thất bại");
+          toast.error("Cập nhật thành viên thất bại");
           return;
         }
-        console.log("response", response);
+        toast.success(
+          `Đã cập nhật thành viên ${
+            response.result.user.employeeCode +
+            " - " +
+            response.result.user.name
+          } thành ${
+            ROLE_MEETING.find((role) => role.id === response.result.meetingRole)
+              ?.name
+          }`
+        );
       }
-      //if success then alert
-      alert("Cập nhật thành công");
+
       setShowAddMember(false);
       //clear all state
       setMembers([]);
@@ -817,7 +846,7 @@ const AddMemberToMeeting = ({
       setDebounceSearch("");
     } catch (error) {
       console.error(error);
-      alert("Cập nhật thất bại");
+      toast.error("Có lỗi xảy ra, vui lòng thử lại sau");
     }
   };
 
@@ -858,7 +887,7 @@ const AddMemberToMeeting = ({
                           htmlFor={member.member.employeeCode}
                         >
                           {member.member.employeeCode +
-                            "-" +
+                            " - " +
                             member.member.name}
                         </label>
                       </div>
@@ -905,7 +934,7 @@ const AddMemberToMeeting = ({
                           htmlFor={member.member.employeeCode}
                         >
                           {member.member.employeeCode +
-                            "-" +
+                            " - " +
                             member.member.name}
                         </label>
                       </div>
@@ -976,7 +1005,6 @@ const ModalUpdateMeeting = ({
     const fetchData = async () => {
       // Fetch data for room and department
       const departmentResponse = await getAllDepartments();
-      console.log(departmentResponse);
       setDepartments(departmentResponse.result);
       const roomResponse = await getAllRooms();
       setRooms(roomResponse.result);
@@ -997,11 +1025,11 @@ const ModalUpdateMeeting = ({
       endTime,
     });
     if (response.code === 200) {
-      alert("Cập nhật cuộc họp thành công");
+      toast.success("Cập nhật cuộc họp thành công");
       setLoad(!load);
       setShowUpdateMeeting(false);
     } else {
-      alert("Cập nhật cuộc họp thất bại");
+      toast.error("Cập nhật cuộc họp thất bại");
     }
     setMeetingCode("");
     setMeetingName("");

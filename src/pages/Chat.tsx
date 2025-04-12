@@ -2,10 +2,12 @@ import type React from "react";
 
 import { useState, useRef, useEffect } from "react";
 import { Paperclip, SendHorizontal } from "lucide-react";
-import type { UserType } from "../interface/auth";
+
 import type { ChatType } from "../interface/chat";
 import type { SignalMessage } from "./Room";
 import { cn } from "../lib/utils";
+import { MemberType } from "../interface/member";
+import { ROLE_MEETING } from "../constants/meeting";
 
 export const ChatComponent = ({
   chats,
@@ -15,7 +17,7 @@ export const ChatComponent = ({
 }: {
   chats: ChatType[];
   sendSignal: (signal: SignalMessage) => void;
-  member: UserType & { peerId: string };
+  member: MemberType;
   meetingCode: string;
 }) => {
   const [message, setMessage] = useState<string>("");
@@ -130,7 +132,13 @@ export const ChatComponent = ({
                 <div className="flex flex-col max-w-[75%]">
                   {!isCurrentUser && (
                     <span className="text-xs text-gray-400 mb-1">
-                      {chat.sender.name}
+                      {chat.sender.name} [{" "}
+                      {
+                        ROLE_MEETING.find(
+                          (role) => role.id === chat.sender.meetingRole
+                        )?.name
+                      }
+                      ]
                     </span>
                   )}
 
