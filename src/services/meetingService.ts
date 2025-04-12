@@ -85,18 +85,20 @@ export const addMemberToMeeting: ({
   meetingId,
   userId,
   meetingRole,
+  forceAdd,
 }:
 {
     meetingId: number;
     userId: number;
     meetingRole: string;
-}) => Promise<{code: number, result: MeetingType, message:string}> = async ({ meetingId, userId, meetingRole }) => {
+    forceAdd?: boolean;
+}) => Promise<{code: number, result: MeetingMemberType, message:string}> = async ({ meetingId, userId, meetingRole, forceAdd = false }) => {
     const token = localStorage.getItem('token') || '';
 
     const response = await fetchApi("members/add", {
         method: "POST",
         token: token,
-        body: JSON.stringify({ meetingId, userId, meetingRole }),
+        body: JSON.stringify({ meetingId, userId, meetingRole, forceAdd}),
     });
     console.log(response);
     return response;
@@ -130,7 +132,7 @@ export const updateMemberInMeeting: ({
     meetingId: number;
     userId: number;
     meetingRole: string;
-}) => Promise<{code: number, message?:string}> = async ({ meetingId, userId, meetingRole }) => {
+}) => Promise<{code: number, message?:string, result: MeetingMemberType}> = async ({ meetingId, userId, meetingRole }) => {
     const token = localStorage.getItem('token') || '';
     const response = await fetchApi("members/update", {
         method: "PUT",

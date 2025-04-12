@@ -1,9 +1,9 @@
-import { UserType } from "./auth";
+import { MemberType } from "./member";
 
 export interface ChatType {
     id: number;
-    sender: UserType;
-    receiver: UserType | string;
+    sender:MemberType;
+    receiver: MemberType | string;
     type: "file" | "text" | "image" | "video";
     message: string;
     file?: File;

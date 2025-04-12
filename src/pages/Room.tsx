@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Client, IMessage } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
+import RecordRTC from "recordrtc";
 import {
   FaVideoSlash,
   FaMicrophoneSlash,
@@ -25,7 +26,9 @@ import {
 } from "lucide-react";
 import { ChatComponent } from "./Chat";
 import { ChatType } from "../interface/chat";
-import { convertWebMToWav, saveAudio } from "../services/audioService";
+import { saveAudio } from "../services/audioService";
+import { MemberType } from "../interface/member";
+import { ROLE_MEETING } from "../constants/meeting";
 
 interface VideoRoomProps {
   meetingCode: string;
@@ -36,7 +39,7 @@ interface VideoRoomProps {
 
 interface Peer {
   id: string;
-  user: UserType;
+  user: MemberType;
   connection?: RTCPeerConnection;
   stream?: MediaStream | null;
 }
@@ -59,7 +62,7 @@ export interface SignalMessage {
     | "participants-length";
   from: string;
   to: string;
-  member: UserType;
+  member: MemberType;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   payload: any;
 }
@@ -75,12 +78,12 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   handleLeave,
   currentMeeting,
 }) => {
-  const [me] = useState<
-    UserType & {
-      peerId: string;
-    }
-  >({
-    ...user,
+  const [me, setMe] = useState<MemberType>({
+    id: user.id,
+    name: user.name,
+    employeeCode: user.employeeCode || "",
+    email: user.email,
+    img: user.img || "",
     peerId: uuidv4(),
   });
   const [hasMic, setHasMic] = useState<boolean>(false);
@@ -94,11 +97,9 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const [countParticipants, setCountParticipants] = useState(1);
   const [isTakeHand, setIsTakeHand] = useState<boolean>(false);
   const [takeHands, setTakeHands] = useState<string[]>([]);
-  const [participants, setParticipants] = useState<
-    (UserType & { peerId: string })[]
-  >([]);
+  const [participants, setParticipants] = useState<MemberType[]>([]);
   const [chats, setChats] = useState<ChatType[]>([]);
-  const participantRef = useRef<(UserType & { peerId: string })[]>([]);
+  const participantRef = useRef<MemberType[]>([]);
   const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
@@ -107,11 +108,8 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const screenStream = useRef<MediaStream | null>(null);
   const stompClient = useRef<Client | null>(null);
   const streamRef = useRef<MediaStream | null>(null); // Reference to store current stream
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(
-    null
-  );
-  // const [audioChunks, setAudioChunks] = useState<Blob[]>([]);
-
+  const recorderRef = useRef<RecordRTC | null>(null); // Reference to store the recorder
+  const audioChucksRef = useRef<Blob[]>([]); // Reference to store audio chunks
   // Khởi tạo media stream
   useEffect(() => {
     const initMedia = async () => {
@@ -267,10 +265,12 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       (message: IMessage) => {
         const signal: SignalMessage = JSON.parse(message.body);
         if (signal.type === "meeting-users") {
-          console.log(
-            "Received existing participants list:",
-            signal.payload.members
-          );
+          console.log("Received existing participants list:", signal);
+          setMe((prev) => ({
+            ...prev,
+            meetingRole: signal.member.meetingRole,
+          }));
+
           if (signal.payload.members && Array.isArray(signal.payload.members)) {
             const existingMembers = signal.payload.members.filter(
               (member: SignalMessage) => member.from !== me.peerId
@@ -316,6 +316,8 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       console.log("Ignoring self join signal");
       return;
     }
+
+    console.log("User joined:", signal);
 
     console.log(`New user joined: ${signal.from} (${signal.member.name})`);
 
@@ -913,13 +915,48 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     }
   };
 
-  const handleSendAudio = async (audioBlob: File) => {
-    const respone = await saveAudio(meetingCode, audioBlob);
+  const handleSendAudio = async (audioBlob: Blob) => {
+    const audioFile = new File([audioBlob], `recording-${Date.now()}.ogg`, {
+      type: "audio/ogg",
+      lastModified: Date.now(),
+    });
+
+    const respone = await saveAudio(meetingCode, audioFile);
     if (respone.code === 200) {
       console.log("Audio saved successfully:", respone);
     }
-    // setAudioChunks([]);
-    setMediaRecorder(null);
+  };
+
+  const startRecording = () => {
+    if (!stream) return;
+    try {
+      const recorder = new RecordRTC(stream, {
+        type: "audio",
+        mimeType: "audio/ogg",
+        recorderType: RecordRTC.StereoAudioRecorder,
+        timeSlice: 5000,
+        ondataavailable: (blob) => {
+          audioChucksRef.current.push(blob);
+        },
+      });
+      recorderRef.current = recorder;
+      recorder.startRecording();
+    } catch (error) {
+      console.error("Error starting recording:", error);
+    }
+  };
+
+  const stopRecording = () => {
+    if (!recorderRef.current) return;
+    try {
+      recorderRef.current.stopRecording(async () => {
+        const audioBlob = recorderRef.current?.getBlob();
+        if (!audioBlob) return;
+        await handleSendAudio(audioBlob);
+      });
+    } catch (error) {
+      console.error("Error stopping recording:", error);
+    }
   };
 
   const toggleMute = () => {
@@ -932,33 +969,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
     if (audioTrack.enabled) {
       // Bật microphone và bắt đầu ghi âm
-      const mediaRecorder = new MediaRecorder(stream);
-      const audioChunks: Blob[] = [];
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-
-        try {
-          // Chuyển đổi từ webm sang wav trước khi gửi lên server
-          const wavBlob = await convertWebMToWav(audioBlob);
-          const audioFile = new File([wavBlob], `recording-${Date.now()}.wav`, {
-            type: "audio/wav",
-          });
-
-          await handleSendAudio(audioFile);
-        } catch (error) {
-          console.error("Error processing audio:", error);
-          setError("Lỗi xử lý file ghi âm");
-        }
-      };
-      mediaRecorder.start();
-      setMediaRecorder(mediaRecorder);
-
+      startRecording();
       // Gửi tín hiệu có microphone
       sendSignal({
         type: "has-mic",
@@ -969,12 +980,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       });
     } else {
       // Dừng ghi âm và tắt microphone
-      if (mediaRecorder) {
-        mediaRecorder.stop();
-      }
-      setMediaRecorder(null);
-      // setAudioChunks([]);
-
+      stopRecording();
       // Tắt microphone
       sendSignal({
         type: "end-mic",
@@ -1061,7 +1067,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
           <div className="flex items-center gap-2">
             {/* Controls */}
             <div className="flex flex-wrap justify-center gap-3">
-              {hasMic && (
+              {hasMic && me.meetingRole === "PRESIDENT" && (
                 <button
                   onClick={handleTurnOffAllMic}
                   className={`flex items-center gap-2 p-2 rounded-md relative group text-gray-50`}
@@ -1195,7 +1201,12 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                 className="w-full h-auto"
               />
               <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2 flex justify-between items-center">
-                <span>{me.name} (Bạn)</span>
+                <span>
+                  {me.name} (Bạn) [{" "}
+                  {ROLE_MEETING.find((role) => role.id === me.meetingRole)
+                    ?.name || "Unknown"}
+                  ]
+                </span>
                 <div className="flex gap-1">
                   {muted && <FaMicrophoneSlash className="text-red-400" />}
                   {videoOff && <FaVideoSlash className="text-red-400" />}
@@ -1221,7 +1232,11 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                   className="w-full h-auto"
                 />
                 <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2">
-                  {peer.user.name}
+                  {peer.user.name} [{" "}
+                  {ROLE_MEETING.find(
+                    (role) => role.id === peer.user.meetingRole
+                  )?.name || "Unknown"}
+                  ]
                 </div>
               </div>
             ))}
@@ -1251,7 +1266,14 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                     )}
                   </div>
                   <div>
-                    <p className="font-medium text-gray-50">{me.name}</p>
+                    <p className="font-medium text-gray-50">
+                      {me.name} ({" "}
+                      {
+                        ROLE_MEETING.find((role) => role.id === me.meetingRole)
+                          ?.name
+                      }
+                      )
+                    </p>
                     <p className="text-sm text-gray-50">Bạn</p>
                   </div>
                 </div>
@@ -1274,9 +1296,17 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                     </div>
                     <div>
                       <p className="font-medium text-gray-50">
-                        {participant.name}
+                        {participant.name} ({" "}
+                        {
+                          ROLE_MEETING.find(
+                            (role) => role.id === participant.meetingRole
+                          )?.name
+                        }
+                        )
                       </p>
-                      <p className="text-sm text-gray-50">{participant.id}</p>
+                      <p className="text-sm text-gray-50">
+                        {participant.employeeCode}
+                      </p>
                     </div>
                     {takeHands.includes(participant.peerId) && (
                       <div className="absolute top-1/2 -translate-y-full right-6 text-yellow-500 h-2.5 w-2.5 rounded-full">
