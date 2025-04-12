@@ -216,9 +216,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   };
 
   const initWebSocket = () => {
-    const socket = new SockJS(
-      `${import.meta.env.VITE_API_BASE_URL}:${import.meta.env.VITE_API_PORT}/ws`
-    );
+    const socket = new SockJS(`${import.meta.env.VITE_WS_URL}`);
     stompClient.current = new Client({
       webSocketFactory: () => socket,
       reconnectDelay: 5000,

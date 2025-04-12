@@ -84,10 +84,19 @@ export default function MeetingRoom() {
         Tham gia
       </button>
     ),
-    NOT_STARTED: () => (
-      <button className="bg-yellow-500 text-white px-2 py-2 rounded-sm">
-        Chưa bắt đầu
+    NOT_STARTED: (item?: MeetingType) => (
+      <button
+        onClick={() => {
+          setCurrentMeeting(item || null);
+          setShowPreview(true);
+        }}
+        className="bg-green-500 text-white px-2 py-2 rounded-sm md:cursor-pointer"
+      >
+        Tham gia
       </button>
+      // <button className="bg-yellow-500 text-white px-2 py-2 rounded-sm">
+      //   Chưa bắt đầu
+      // </button>
     ),
     ENDED: () => (
       <button className=" text-red-500 px-2 py-2 rounded-sm">
