@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from "react";
-import { Client, IMessage } from "@stomp/stompjs";
+import type React from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Client, type IMessage } from "@stomp/stompjs";
 import SockJS from "sockjs-client";
 import RecordRTC from "recordrtc";
 import {
@@ -10,9 +11,9 @@ import {
   FaUserFriends,
 } from "react-icons/fa";
 import { v4 as uuidv4 } from "uuid";
-import { UserType } from "../interface/auth";
+import type { UserType } from "../interface/auth";
 import joinSound from "../assets/sounds/join-meeting.mp3";
-import { MeetingType } from "../interface/meeting";
+import type { MeetingType } from "../interface/meeting";
 import logo from "../assets/images/Logo.png";
 import {
   LucideHand,
@@ -25,10 +26,18 @@ import {
   LucideVideoOff,
 } from "lucide-react";
 import { ChatComponent } from "./Chat";
-import { ChatType } from "../interface/chat";
+import type { ChatType } from "../interface/chat";
 import { saveAudio } from "../services/audioService";
-import { MemberType } from "../interface/member";
+import type { MemberType } from "../interface/member";
 import { ROLE_MEETING } from "../constants/meeting";
+import { toast } from "react-toastify";
+import { captureScreen } from "../services/screenSharing";
+
+declare module "react" {
+  interface VideoHTMLAttributes<T> extends HTMLAttributes<T> {
+    srcObject?: MediaStream | MediaSource | Blob | null;
+  }
+}
 
 interface VideoRoomProps {
   meetingCode: string;
@@ -59,7 +68,12 @@ export interface SignalMessage {
     | "clear-mic"
     | "raised-hands"
     | "lower-hands"
-    | "participants-length";
+    | "participants-length"
+    | "screen-share"
+    | "request-state"
+    | "user-state"
+    | "request-screen";
+
   from: string;
   to: string;
   member: MemberType;
@@ -94,7 +108,6 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const [videoOff, setVideoOff] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [showParticipants, setShowParticipants] = useState(true);
-  const [countParticipants, setCountParticipants] = useState(1);
   const [isTakeHand, setIsTakeHand] = useState<boolean>(false);
   const [takeHands, setTakeHands] = useState<string[]>([]);
   const [participants, setParticipants] = useState<MemberType[]>([]);
@@ -104,12 +117,28 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const [loading, setLoading] = useState(false);
 
   const myVideo = useRef<HTMLVideoElement>(null);
+  const screenVideo = useRef<HTMLVideoElement>(null);
   const peersRef = useRef<Record<string, RTCPeerConnection>>({});
-  const screenStream = useRef<MediaStream | null>(null);
+  const screenStreamRef = useRef<MediaStream | null>(null);
   const stompClient = useRef<Client | null>(null);
   const streamRef = useRef<MediaStream | null>(null); // Reference to store current stream
   const recorderRef = useRef<RecordRTC | null>(null); // Reference to store the recorder
   const audioChucksRef = useRef<Blob[]>([]); // Reference to store audio chunks
+  const isResetMic = useRef<boolean>(false); // Reference to track if mic is reset
+  //shareScreen
+  const [currentScreenSharer, setCurrentScreenSharer] = useState<string | null>(
+    null
+  );
+  //current state
+  const allStateRef = useRef<{
+    screenShare: boolean;
+    muted: boolean;
+    isTakeHand: boolean;
+  }>({
+    screenShare,
+    muted,
+    isTakeHand,
+  });
   // Khởi tạo media stream
   useEffect(() => {
     const initMedia = async () => {
@@ -313,14 +342,15 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
   const handleUserJoined = (signal: SignalMessage) => {
     if (signal.from === me.peerId) {
-      console.log("Ignoring self join signal");
+      sendSignal({
+        type: "request-state",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: {},
+      });
       return;
     }
-
-    console.log("User joined:", signal);
-
-    console.log(`New user joined: ${signal.from} (${signal.member.name})`);
-
     // Add to participants list
     const newParticipant = { ...signal.member, peerId: signal.from };
     setParticipants((prev) => {
@@ -337,13 +367,10 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       (p) => p.peerId !== newParticipant.peerId
     );
     participantRef.current.push(newParticipant);
+    //if has mic is true
 
     // Create peer connection for the new user and send an offer
     // Since we are already in the room, we initiate the connection
-    console.log(
-      `Creating initiator peer connection for new user ${signal.from}`
-    );
-    setCountParticipants((prev) => prev + 1);
     createPeerConnection(signal.from, true);
   };
 
@@ -374,6 +401,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       case "has-mic":
         console.log("User has mic:", signal.from);
         if (signal.from !== me.peerId) setHasMic(true);
+        if (signal.to === me.peerId) setHasMic(true);
         break;
       case "end-mic":
         console.log("User ended mic:", signal.from);
@@ -381,16 +409,15 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         break;
       case "clear-mic":
         {
+          // giả ấn vào tongleMuted button neu dang on mic
           if (signal.from === me.peerId) return;
-          console.log("User cleared mic:", signal.from);
-          // Tắt microphone
-          console.log(stream);
-          if (!stream) return;
-          const audioTrack = stream?.getAudioTracks()[0];
-          if (audioTrack) {
-            audioTrack.enabled = false;
-            setMuted(true);
+          if (muted) {
+            const button = document.querySelector("#toggle-mic-btn");
+            if (button) {
+              (button as HTMLButtonElement).click();
+            }
           }
+          allStateRef.current.muted = true;
           setHasMic(false);
         }
         break;
@@ -422,6 +449,74 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         console.log("User left:", signal.from);
         handleUserLeft(signal);
         break;
+
+      case "screen-share":
+        if (signal.from === me.peerId) return;
+        console.log("Received screen candidate from:", signal.from);
+        handleScreenSharing(signal);
+        break;
+      case "request-state":
+        if (signal.from === me.peerId) return;
+        if (
+          allStateRef.current.screenShare ||
+          !allStateRef.current.muted ||
+          allStateRef.current.isTakeHand
+        )
+          sendSignal({
+            type: "user-state",
+            from: me.peerId,
+            to: signal.from,
+            member: me,
+            payload: {
+              screenShare: allStateRef.current.screenShare,
+              muted: !allStateRef.current.muted,
+              isTakeHand: allStateRef.current.isTakeHand,
+            },
+          });
+        break;
+      case "user-state": {
+        if (signal.to !== me.peerId) return;
+        const { muted, screenShare, isTakeHand } = signal.payload;
+        if (screenShare) {
+          setCurrentScreenSharer(signal.from);
+          // Yêu cầu đổi track screen cho người mới
+          sendSignal({
+            type: "request-screen",
+            from: me.peerId,
+            to: signal.from,
+            member: me,
+            payload: { isSharing: true },
+          });
+        }
+        if (signal.payload.muted) {
+          setHasMic(muted);
+        }
+        if (isTakeHand) {
+          setTakeHands((prev) => [...prev, signal.from]);
+        }
+        break;
+      }
+      case "request-screen": {
+        if (signal.to !== me.peerId) return;
+
+        const targetPeerId = signal.from;
+        const peerConnection = peersRef.current[targetPeerId]; // 🎯 Chỉ người yêu cầu
+
+        if (!peerConnection || !screenStreamRef.current) return;
+
+        const videoTrack = screenStreamRef.current.getVideoTracks()[0];
+        if (!videoTrack) return;
+
+        const sender = peerConnection
+          .getSenders()
+          .find((s) => s.track?.kind === "video");
+
+        if (sender) {
+          sender.replaceTrack(videoTrack);
+        }
+
+        break;
+      }
 
       default:
         console.warn("Unknown signal type:", signal.type);
@@ -505,6 +600,20 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const handleUserLeft = (signal: SignalMessage) => {
     if (signal.from === me.peerId) {
       // Người dùng tự rời khỏi phòng
+      // Dừng ghi âm nếu đang bật mic
+      if (!muted && recorderRef.current) {
+        stopRecording();
+      }
+
+      // Dừng chia sẻ màn hình nếu đang chia sẻ
+      if (screenShare) {
+        if (screenStreamRef.current) {
+          screenStreamRef.current.getTracks().forEach((track) => track.stop());
+          screenStreamRef.current = null;
+        }
+        setScreenShare(false);
+        allStateRef.current.screenShare = false;
+      }
       // Đóng tất cả kết nối peer
       Object.entries(peersRef.current).forEach(([peerId, peer]) => {
         try {
@@ -525,15 +634,6 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         });
       }
 
-      if (screenStream.current) {
-        screenStream.current.getTracks().forEach((track) => {
-          track.stop();
-          console.log("Stopped screen share track:", track.kind);
-        });
-        screenStream.current = null;
-        setScreenShare(false);
-      }
-
       // Ngắt kết nối WebSocket
       if (stompClient.current) {
         stompClient.current.deactivate();
@@ -548,6 +648,11 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       // Người khác rời khỏi phòng
       const peerId = signal.from;
       console.log(`User left: ${peerId}, cleaning up...`);
+
+      // Nếu người rời phòng đang bật mic
+      if (hasMic && signal.from === peerId) {
+        setHasMic(false);
+      }
 
       // Đóng kết nối peer nếu có
       if (peersRef.current[peerId]) {
@@ -581,6 +686,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     const newParticipants = signals
       .map((s) => ({ ...s.member, peerId: s.from }))
       .filter((p) => p.peerId !== me.peerId);
+    //ckeck if any is sharing screen
 
     // Update state with new participants
     setParticipants((prev) => {
@@ -794,6 +900,33 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   };
 
   const leaveMeeting = () => {
+    // Dừng ghi âm nếu đang bật mic
+    if (!muted && recorderRef.current) {
+      stopRecording();
+      sendSignal({
+        type: "end-mic",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: {},
+      });
+    }
+    // Tat chia se man hinh
+    if (screenShare) {
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach((track) => track.stop());
+        screenStreamRef.current = null;
+      }
+      setScreenShare(false);
+      allStateRef.current.screenShare = false;
+      sendSignal({
+        type: "screen-share",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: { isSharing: false },
+      });
+    }
     sendSignal({
       type: "user-left",
       from: me.peerId,
@@ -802,118 +935,123 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       payload: {},
     });
   };
-
-  const toggleScreenShare = async () => {
-    try {
-      if (screenShare) {
-        // Dừng chia sẻ màn hình
-        if (screenStream.current) {
-          screenStream.current.getTracks().forEach((track) => {
-            track.stop();
-            console.log("Stopped screen share track:", track.kind);
-          });
-          screenStream.current = null;
-        }
-        setScreenShare(false);
-
-        // Quay lại sử dụng camera (nếu được bật)
-        try {
-          const newStream = await navigator.mediaDevices.getUserMedia({
-            video: !videoOff,
-            audio: !muted,
-          });
-
-          setStream(newStream);
-          streamRef.current = newStream;
-
-          if (myVideo.current) {
-            myVideo.current.srcObject = newStream;
-          }
-
-          // Cập nhật track cho tất cả peer connections
-          Object.entries(peersRef.current).forEach(([peerId, peer]) => {
-            const senders = peer.getSenders();
-
-            // Tìm và thay thế video track
-            const videoSender = senders.find((s) => s.track?.kind === "video");
-            if (videoSender && newStream.getVideoTracks().length > 0) {
-              videoSender
-                .replaceTrack(newStream.getVideoTracks()[0])
-                .then(() => console.log(`Replaced video track for ${peerId}`))
-                .catch((err) =>
-                  console.error(
-                    `Error replacing video track for ${peerId}:`,
-                    err
-                  )
-                );
-            }
-
-            // Tìm và thay thế audio track nếu cần
-            const audioSender = senders.find((s) => s.track?.kind === "audio");
-            if (audioSender && newStream.getAudioTracks().length > 0) {
-              audioSender
-                .replaceTrack(newStream.getAudioTracks()[0])
-                .then(() => console.log(`Replaced audio track for ${peerId}`))
-                .catch((err) =>
-                  console.error(
-                    `Error replacing audio track for ${peerId}:`,
-                    err
-                  )
-                );
-            }
-          });
-        } catch (err) {
-          console.error("Error reacquiring user media:", err);
-          setError(
-            "Không thể khôi phục camera/microphone sau khi dừng chia sẻ màn hình"
-          );
-        }
-      } else {
-        // Bắt đầu chia sẻ màn hình
-        const screenStreamVal = await navigator.mediaDevices.getDisplayMedia({
-          video: true,
-          audio: true, // Cho phép chia sẻ âm thanh hệ thống nếu có
-        });
-
-        screenStream.current = screenStreamVal;
-        setScreenShare(true);
-
-        if (myVideo.current) {
-          myVideo.current.srcObject = screenStreamVal;
-        }
-
-        // Cập nhật video track cho tất cả peer connections
-        Object.entries(peersRef.current).forEach(([peerId, peer]) => {
-          const senders = peer.getSenders();
-          const videoSender = senders.find((s) => s.track?.kind === "video");
-
-          if (videoSender && screenStreamVal.getVideoTracks().length > 0) {
-            videoSender
-              .replaceTrack(screenStreamVal.getVideoTracks()[0])
-              .then(() =>
-                console.log(`Replaced with screen share for ${peerId}`)
-              )
-              .catch((err) =>
-                console.error(
-                  `Error replacing with screen share for ${peerId}:`,
-                  err
-                )
-              );
-          }
-        });
-
-        // Xử lý khi người dùng dừng chia sẻ từ trình duyệt
-        screenStreamVal.getVideoTracks()[0].onended = () => {
-          console.log("Screen sharing ended by browser UI");
-          toggleScreenShare();
-        };
-      }
-    } catch (err) {
-      console.error("Error handling screen share:", err);
-      setError("Không thể chia sẻ màn hình. Vui lòng thử lại.");
-      setScreenShare(false);
+  const handleScreenSharing = async (signal: SignalMessage) => {
+    const { from, payload, member } = signal;
+    if (from === me.peerId) return;
+    if (payload.isSharing) {
+      // Ai đó bắt đầu chia sẻ màn hình
+      toast.info(`${member?.name} đang chia sẻ màn hình`);
+      setCurrentScreenSharer(from); // set người đang chia sẻ
+    } else {
+      // Ai đó dừng chia sẻ
+      toast.info(`${member?.name} đã dừng chia sẻ màn hình`);
+      setCurrentScreenSharer(null);
     }
   };
+  const handleEndScreenSharing = () => {
+    screenStreamRef.current?.getTracks().forEach((track) => track.stop());
+    screenStreamRef.current = null;
+
+    setScreenShare(false);
+    allStateRef.current.screenShare = false;
+    // Đổi lại video track cho mỗi peer
+    Object.values(peersRef.current).forEach((peerConnection) => {
+      const videoTrack = streamRef.current?.getVideoTracks()[0];
+
+      const sender = peerConnection
+        .getSenders()
+        .find((s) => s.track?.kind === "video");
+
+      if (sender && videoTrack) {
+        sender.replaceTrack(videoTrack);
+      }
+    });
+    // Khôi phục lại camera local
+    streamRef.current?.getVideoTracks().forEach((track) => {
+      if (!track.enabled) track.enabled = true;
+    });
+    setTimeout(() => {
+      if (myVideo.current && streamRef.current) {
+        myVideo.current.srcObject = streamRef.current;
+
+        // Đảm bảo track vẫn bật
+        streamRef.current
+          .getVideoTracks()
+          .forEach((track) => (track.enabled = true));
+      }
+    }, 50);
+
+    sendSignal({
+      type: "screen-share",
+      from: me.peerId,
+      to: "all",
+      member: me,
+      payload: { isSharing: false },
+    });
+  };
+  const toggleScreenShare = async () => {
+    try {
+      // If already sharing, stop sharing
+      if (screenShare) {
+        // Notify others that screen sharing has ended
+        handleEndScreenSharing();
+      } else {
+        // Check if someone else is already sharing
+        if (currentScreenSharer) {
+          toast.warn(
+            `Bạn không thể chi sẻ màn hình, bởi ai đó đang sử dụng tính năng này!`
+          );
+          return;
+        }
+
+        const screenStream = await captureScreen();
+        screenStreamRef.current = screenStream;
+        const videoTrack = screenStream.getVideoTracks()[0];
+        videoTrack.addEventListener("ended", () => {
+          console.log("Screen sharing ended");
+          handleEndScreenSharing();
+        });
+
+        // Update the current screen sharer
+        Object.values(peersRef.current).forEach((peerConnection) => {
+          const videoTrack = screenStream.getVideoTracks()[0];
+
+          const sender = peerConnection
+            .getSenders()
+            .find((s) => s.track?.kind === "video");
+
+          if (sender && videoTrack) {
+            sender.replaceTrack(videoTrack);
+          }
+        });
+
+        if (myVideo.current) {
+          myVideo.current.srcObject = screenStream;
+        }
+
+        setScreenShare(true);
+        allStateRef.current.screenShare = true;
+        // Notify others about screen sharing
+        sendSignal({
+          type: "screen-share",
+          from: me.peerId,
+          to: "all",
+          member: me,
+          payload: { isSharing: true },
+        });
+      }
+    } catch (err) {
+      console.error("Error toggling screen share:", err);
+      setError("Không thể chia sẻ màn hình. Vui lòng thử lại.");
+    }
+  };
+
+  useEffect(() => {
+    if (screenShare)
+      if (screenShare && screenStreamRef.current && screenVideo.current) {
+        screenVideo.current.srcObject = screenStreamRef.current;
+      }
+  }, [screenShare]);
 
   const handleSendAudio = async (audioBlob: Blob) => {
     const audioFile = new File([audioBlob], `recording-${Date.now()}.ogg`, {
@@ -959,13 +1097,13 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     }
   };
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (!stream) return;
     const audioTrack = stream.getAudioTracks()[0];
     if (!audioTrack) return;
-
     audioTrack.enabled = !audioTrack.enabled;
     setMuted(!audioTrack.enabled);
+    allStateRef.current.muted = !audioTrack.enabled;
 
     if (audioTrack.enabled) {
       // Bật microphone và bắt đầu ghi âm
@@ -990,7 +1128,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         payload: {},
       });
     }
-  };
+  }, [stream, me.peerId, isResetMic]);
 
   const toggleVideo = () => {
     if (stream) {
@@ -1030,6 +1168,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   const sendRaisedHand = () => {
     if (isTakeHand) {
       setIsTakeHand(false);
+      allStateRef.current.isTakeHand = false;
       sendSignal({
         type: "lower-hands",
         from: me.peerId,
@@ -1039,6 +1178,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       });
     } else {
       setIsTakeHand(true);
+      allStateRef.current.isTakeHand = true;
       sendSignal({
         type: "raised-hands",
         from: me.peerId,
@@ -1054,12 +1194,29 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     connectToMeeting();
   }, []);
 
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const button = document.querySelector("#leave-meeting-btn");
+      if (button) {
+        (button as HTMLButtonElement).click();
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
   return (
     <div className="flex flex-col items-center justify-center bg-gray-100 fixed top-0 left-0 h-screen w-screen z-50">
       <div className="w-full h-full bg-white shadow-lg overflow-hidden">
         <div className="px-4 py-2 bg-black text-white flex justify-between items-center">
           <div className="flex items-center gap-2">
-            <img src={logo} alt="logo" className="size-12" />
+            <img
+              src={logo || "/placeholder.svg"}
+              alt="logo"
+              className="size-12"
+            />
             <h2 className="text-base text-white font-semibold uppercase">
               {currentMeeting.name}
             </h2>
@@ -1130,6 +1287,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
               <button
                 onClick={() => toggleMute()}
                 disabled={hasMic}
+                id="toggle-mic-btn"
                 className={`relative flex items-center gap-2 p-2 rounded-md group ${
                   muted ? "text-red-700" : " text-gray-300"
                 } `}
@@ -1158,17 +1316,32 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
               <button
                 onClick={toggleScreenShare}
+                disabled={
+                  currentScreenSharer !== null &&
+                  currentScreenSharer !== me.peerId
+                }
                 className={`relative flex items-center gap-2 p-2 rounded-md group ${
-                  screenShare ? " text-blue-700" : " text-gray-300"
-                } `}
+                  screenShare
+                    ? "text-blue-700"
+                    : currentScreenSharer !== null &&
+                      currentScreenSharer !== me.peerId
+                    ? "text-gray-500 cursor-not-allowed"
+                    : "text-gray-300"
+                }`}
               >
                 <LucideScreenShare size={24} />
                 <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
-                  Chia sẻ màn hình
+                  {currentScreenSharer !== null &&
+                  currentScreenSharer !== me.peerId
+                    ? "Người khác đang chia sẻ màn hình"
+                    : screenShare
+                    ? "Dừng chia sẻ màn hình"
+                    : "Chia sẻ màn hình"}
                 </span>
               </button>
 
               <button
+                id="leave-meeting-btn"
                 onClick={leaveMeeting}
                 className="flex items-center gap-2 px-4 py-2 rounded-md bg-red-600 text-white hover:bg-red-700"
               >
@@ -1180,71 +1353,221 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
         {/* Phan noi dung */}
         <div className="flex h-full">
-          <div
-            className={`bg-gray-900  gap-1 items-center w-full ${
-              countParticipants > 8
-                ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 3xl:grid-cols-6"
-                : countParticipants > 4
-                ? "grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-                : countParticipants > 3
-                ? "grid gird-cols-2 md:grid-cols-3 lg:grid-cols-4"
-                : "flex justify-center"
-            }`}
-          >
-            {/* Video của mình */}
-            <div className="relative overflow-hidden bg-black h-auto w-auto">
-              <video
-                playsInline
-                muted
-                ref={myVideo}
-                autoPlay
-                className="w-full h-auto"
-              />
-              <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2 flex justify-between items-center">
-                <span>
-                  {me.name} (Bạn) [{" "}
-                  {ROLE_MEETING.find((role) => role.id === me.meetingRole)
-                    ?.name || "Unknown"}
-                  ]
-                </span>
-                <div className="flex gap-1">
-                  {muted && <FaMicrophoneSlash className="text-red-400" />}
-                  {videoOff && <FaVideoSlash className="text-red-400" />}
-                  {screenShare && <FaDesktop className="text-blue-400" />}
+          {(currentScreenSharer || screenShare) && (
+            <div className="flex h-[calc(100vh-64px)] flex-col items-center bg-gray-950">
+              {/* Screen share display */}
+              <div
+                className={`bg-black relative items-center h-auto my-auto ${
+                  participants.length > 0 ? "w-5/6" : "w-full"
+                }`}
+              >
+                {/* When I am sharing my screen */}
+                {screenShare && (
+                  <video
+                    ref={screenVideo}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-contain"
+                  />
+                )}
+                {/* When someone else is sharing their screen */}
+                {!screenShare &&
+                  currentScreenSharer &&
+                  peers[currentScreenSharer]?.stream && (
+                    <video
+                      autoPlay
+                      playsInline
+                      className="w-full h-full object-contain"
+                      ref={(video) => {
+                        if (video) {
+                          video.srcObject =
+                            peers[currentScreenSharer].stream || null;
+                        }
+                      }}
+                    />
+                  )}
+                {/* Display sharer info */}
+                <div className="absolute bottom-4 left-4 bg-black bg-opacity-60 text-white p-2 rounded">
+                  {!currentScreenSharer
+                    ? "Bạn đang chia sẻ màn hình"
+                    : `${
+                        peers[currentScreenSharer]?.user.name +
+                          ` [${
+                            ROLE_MEETING.find(
+                              (role) =>
+                                role.id ===
+                                peers[currentScreenSharer]?.user.meetingRole
+                            )?.name
+                          }]` || "Người dùng"
+                      } đang chia sẻ màn hình`}
                 </div>
               </div>
-            </div>
 
-            {/* Video của người tham gia */}
-            {Object.values(peers).map((peer) => (
+              {/* Video thumbnails when screen sharing is active */}
+              {participants.length > 0 && (
+                <div
+                  className={`bg-gray-900  gap-1 w-full grid grid-cols-6 items-center lg:min-h-52 mt-0.5`}
+                >
+                  {/* Video của mình  */}
+                  {currentScreenSharer !== me.peerId && !screenShare && (
+                    <div className="relative overflow-hidden bg-black h-full w-full col-span-1">
+                      <video
+                        playsInline
+                        muted
+                        ref={(video) => {
+                          if (video) {
+                            video.srcObject = streamRef.current;
+                          }
+                        }}
+                        autoPlay
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2 flex justify-between items-center">
+                        <span>
+                          {me.name} (Bạn) [{" "}
+                          {ROLE_MEETING.find(
+                            (role) => role.id === me.meetingRole
+                          )?.name || "Unknown"}
+                          ]
+                        </span>
+                        <div className="flex gap-1">
+                          {muted && (
+                            <FaMicrophoneSlash className="text-red-400" />
+                          )}
+                          {videoOff && (
+                            <FaVideoSlash className="text-red-400" />
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Video của người tham gia */}
+                  {Object.values(peers).map((peer) => {
+                    if (peer.id === currentScreenSharer) return null;
+                    return (
+                      <div
+                        key={peer.id}
+                        className={`relative overflow-hidden bg-black h-full w-full col-span-1`}
+                      >
+                        <video
+                          playsInline
+                          ref={(video) => {
+                            if (video && peer.stream) {
+                              video.srcObject = peer.stream;
+                            }
+                          }}
+                          autoPlay
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2 flex justify-between items-center">
+                          <span>
+                            {peer.user.name} [{" "}
+                            {ROLE_MEETING.find(
+                              (role) => role.id === peer.user.meetingRole
+                            )?.name || "Unknown"}
+                            ]
+                          </span>
+                          <div className="flex gap-1">
+                            {takeHands.includes(peer.id) && (
+                              <LucideHand className="text-yellow-500" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {!currentScreenSharer && !screenShare && (
+            <div
+              className={`bg-gray-900 p-1 gap-1 w-full ${
+                showParticipants || showChat ? "flex-1" : "w-full"
+              } ${
+                participants.length <= 1
+                  ? "flex justify-center items-center"
+                  : participants.length <= 9
+                  ? "grid grid-cols-3 items-center"
+                  : participants.length <= 16
+                  ? "grid grid-cols-4 auto-rows-fr"
+                  : "grid grid-cols-5 auto-rows-fr"
+              }`}
+            >
+              {/* Video của mình */}
               <div
-                key={peer.id}
-                className="relative overflow-hidden bg-black h-fit w-fit"
+                className={`relative overflow-hidden bg-black h-full w-full ${
+                  participants.length <= 2 && "max-h-1/2"
+                } ${participants.length <= 0 && "max-w-1/2"}`}
               >
                 <video
                   playsInline
+                  muted
                   ref={(video) => {
-                    if (video && peer.stream) {
-                      video.srcObject = peer.stream;
+                    if (video) {
+                      video.srcObject = streamRef.current;
+                      myVideo.current = video;
                     }
                   }}
                   autoPlay
-                  className="w-full h-auto"
+                  className="w-full h-full object-cover"
                 />
-                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2">
-                  {peer.user.name} [{" "}
-                  {ROLE_MEETING.find(
-                    (role) => role.id === peer.user.meetingRole
-                  )?.name || "Unknown"}
-                  ]
+                <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2 flex justify-between items-center">
+                  <span>
+                    {me.name} (Bạn) [{" "}
+                    {ROLE_MEETING.find((role) => role.id === me.meetingRole)
+                      ?.name || "Unknown"}
+                    ]
+                  </span>
+                  <div className="flex gap-1">
+                    {muted && <FaMicrophoneSlash className="text-red-400" />}
+                    {videoOff && <FaVideoSlash className="text-red-400" />}
+                    {screenShare && <FaDesktop className="text-blue-400" />}
+                  </div>
                 </div>
               </div>
-            ))}
-          </div>
+
+              {/* Video của người tham gia */}
+              {Object.values(peers).map((peer) => (
+                <div
+                  key={peer.id}
+                  className={`relative overflow-hidden bg-black h-full w-full ${
+                    participants.length <= 2 && "max-h-1/2 "
+                  } ${participants.length <= 0 && "max-w-1/2 "}`}
+                >
+                  <video
+                    playsInline
+                    ref={(video) => {
+                      if (video && peer.stream) {
+                        video.srcObject = peer.stream;
+                      }
+                    }}
+                    autoPlay
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-60 text-white p-2 flex justify-between items-center">
+                    <span>
+                      {peer.user.name} [{" "}
+                      {ROLE_MEETING.find(
+                        (role) => role.id === peer.user.meetingRole
+                      )?.name || "Unknown"}
+                      ]
+                    </span>
+                    <div className="flex gap-1">
+                      {takeHands.includes(peer.id) && (
+                        <LucideHand className="text-yellow-500" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* Danh sách người tham gia */}
           {showParticipants && (
-            <div className="p-4 w-1/4 bg-gray-950">
+            <div className="p-4 w-1/4 min-w-96 bg-gray-950">
               <div className="flex items-center gap-2 text-white mb-3">
                 <FaUserFriends />
                 <h3 className="font-medium">
@@ -1320,7 +1643,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
           )}
           {/* Chat */}
           {showChat && (
-            <div className="w-1/4 bg-gray-100 h-full overflow-hidden">
+            <div className="w-1/4 min-w-96 bg-gray-100 h-full overflow-hidden">
               {/* Chat content goes here */}
               <ChatComponent
                 chats={chats}

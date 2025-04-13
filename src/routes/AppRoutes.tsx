@@ -13,6 +13,7 @@ import RoomsPage from "../pages/admin/rooms-page";
 import AccountsPage from "../pages/admin/account-page";
 import ProfilePage from "../pages/admin/profile-page";
 import MeetingRoomPage from "../pages/admin/meeting-room-page";
+import Calendar from "../pages/Calendar";
 
 const AppRoutes = () => {
   return (
@@ -26,6 +27,7 @@ const AppRoutes = () => {
             <Route element={<ProtectRoutes />}>
               <Route path="/meeting-room" element={<Container />}>
                 <Route index element={<MeetingRoom />} />
+                <Route path="calendar" element={<Calendar />} />
               </Route>
 
               <Route path="/dashboard" element={<AdminLayout />}>
