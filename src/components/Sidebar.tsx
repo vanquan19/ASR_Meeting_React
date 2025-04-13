@@ -31,7 +31,11 @@ const objSidebar = [
 ];
 
 export default function Sidebar() {
-  const [current, setCurrent] = useState<number>(2);
+  const [current, setCurrent] = useState<number>(
+    objSidebar.findIndex((item) => item.link === window.location.pathname)
+      ? objSidebar.findIndex((item) => item.link === window.location.pathname)
+      : 0
+  );
   return (
     <div className="w-20">
       <nav className="p-4 bg-gray-100/70 h-screen fixed pt-6">
