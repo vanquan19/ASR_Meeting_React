@@ -1,10 +1,14 @@
+import { AuthProvider } from "./context/AuthContext";
 import AppRoutes from "./routes/AppRoutes";
 import { ToastContainer } from "react-toastify";
 
 function App() {
   return (
     <>
-      <AppRoutes />
+      <AuthProvider>
+        <AppRoutes />
+      </AuthProvider>
+      {/* Toast notifications */}
       <ToastContainer />
     </>
   );

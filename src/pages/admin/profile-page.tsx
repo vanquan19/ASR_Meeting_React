@@ -24,11 +24,11 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { UserType } from "../../interface/auth";
 import { Camera } from "lucide-react";
-import { changePassword, updateUser } from "../../services/userService";
+import { changePassword, updateMyInfo } from "../../services/userService";
 import { toast } from "react-toastify";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, setUser } = useAuth();
 
   const [profile, setProfile] = useState<UserType>(user as UserType);
 
@@ -39,6 +39,7 @@ export default function ProfilePage() {
   });
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
+    // setUser is already destructured at the top level
     e.preventDefault();
     // Handle profile update logic here
     const confirm = window.confirm(
@@ -46,12 +47,23 @@ export default function ProfilePage() {
     );
     if (!confirm) return;
 
-    const response = await updateUser(profile.id, profile);
+    const response = await updateMyInfo({
+      name: profile.name,
+      dob: profile.dob,
+      phoneNumber: profile.phoneNumber,
+      identification: profile.identification,
+      address: profile.address,
+      bankName: profile.bankName,
+      bankNumber: profile.bankNumber,
+      email: profile.email,
+    });
     console.log(response);
     if (response.code !== 200) {
       toast.error("Cập nhật thông tin không thành công");
       return;
     }
+    setUser({ ...user, ...profile });
+    localStorage.setItem("user", JSON.stringify({ ...user, ...profile }));
     toast.success("Cập nhật thông tin thành công");
     setProfile({ ...profile });
   };
@@ -87,7 +99,7 @@ export default function ProfilePage() {
                 className="md:cursor-pointer relative w-40 h-40"
               >
                 <Avatar className="size-full ">
-                  <AvatarImage src={user?.img || ""} />
+                  <AvatarImage src={profile?.img || ""} />
                   <AvatarFallback>JD</AvatarFallback>
                 </Avatar>
                 <Camera className="absolute bottom-0 right-0 -translate-x-6 text-blue-600 bg-white rounded-full p-1 size-7" />
@@ -102,7 +114,24 @@ export default function ProfilePage() {
                   if (file) {
                     const reader = new FileReader();
                     reader.onloadend = () => {
+                      const base64String = reader.result as string;
                       setProfile({ ...profile, img: reader.result as string });
+                      // Call API to upload image
+                      updateMyInfo({
+                        ...user,
+                        img: base64String,
+                      }).then((response) => {
+                        if (response.code !== 200) {
+                          toast.error("Cập nhật ảnh đại diện không thành công");
+                          return;
+                        }
+                        setUser(response.result);
+                        localStorage.setItem(
+                          "user",
+                          JSON.stringify({ ...user, img: base64String })
+                        );
+                        toast.success("Cập nhật ảnh đại diện thành công");
+                      });
                     };
                     reader.readAsDataURL(file);
                   }

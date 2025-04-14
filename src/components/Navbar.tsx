@@ -4,7 +4,7 @@ import { SearchInput } from "./ui/input";
 import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const [show, setShow] = useState<boolean>(false);
   const navigate = useNavigate();
 
@@ -58,7 +58,11 @@ export default function Navbar() {
                   />
                 )}
                 <Link
-                  to="/dashboard/profile"
+                  to={
+                    !hasPermission("ROLE_ADMIN")
+                      ? "/meeting-room/profile"
+                      : "/dashboard/profile"
+                  }
                   className="hover:bg-gray-100 w-full p-1"
                 >
                   <span className="text-base uppercase font-bold ">
