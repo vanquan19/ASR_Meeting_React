@@ -82,6 +82,40 @@ export const updateUser = async (id:number, {
     return response;
 }
 
+
+export const updateMyInfo = async ({
+    name,
+    dob,
+    phoneNumber,
+    identification,
+    address,
+    bankName,
+    bankNumber,
+    email,
+    img,
+}: {
+    name?: string;
+    dob?: string;
+    phoneNumber?: string;
+    identification?: string;
+    address?: string;
+    bankName?: string;
+    bankNumber?: string;
+    email?: string;
+    img?: string;
+}) => {
+    const token = localStorage.getItem('token') || '';
+    const response = await fetchApi("users/profile/my-info", {
+        method: "PUT",
+        token: token,
+        body: JSON.stringify({ name, dob, phoneNumber, identification, address, bankName, bankNumber, email, img }),
+    });
+    if(response.code !== 200) {
+        throw new Error(`Error: ${response.message}`);
+    }
+    return response;
+}
+
 export const deleteUser = async (id:number) => {
     const token = localStorage.getItem('token') || '';
     const response = await fetchApi("users/" + id, {

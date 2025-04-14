@@ -32,6 +32,8 @@ import type { MemberType } from "../interface/member";
 import { ROLE_MEETING } from "../constants/meeting";
 import { toast } from "react-toastify";
 import { captureScreen } from "../services/screenSharing";
+import { getChatToMeeting } from "../services/chatService";
+import { decryptText } from "../utils/aes";
 
 declare module "react" {
   interface VideoHTMLAttributes<T> extends HTMLAttributes<T> {
@@ -718,18 +720,41 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     });
   };
 
-  const handleChatMessage = (signal: SignalMessage) => {
+  const handleChatMessage = async (signal: SignalMessage) => {
+    const { payload, member } = signal;
+    const { type, message, file } = payload;
     const chatMessage: ChatType = {
       id: Date.now(),
-      sender: signal.member,
-      message: signal.payload.message,
+      sender: member,
       receiver: signal.to,
-      type: signal.payload.type,
-      file: signal.payload.file,
-      timestamp: signal.payload.timestamp,
-    };
+      type: type,
+      timestamp: payload.timestamp,
+    } as ChatType;
+
+    const decriptedText = decryptText(message, import.meta.env.VITE_AES_KEY);
+    chatMessage.message = decriptedText;
+    if (file) {
+      chatMessage.file = {
+        name: file.name,
+        type: file.type,
+      };
+    }
+
     setChats((prev) => [...prev, chatMessage]);
   };
+
+  //initial chat
+  useEffect(() => {
+    const getChat = async () => {
+      const res = await getChatToMeeting(meetingCode);
+      if (res.code !== 200) {
+        setError(res.message);
+        return;
+      }
+      setChats((prev) => [...prev, ...res.data]);
+    };
+    getChat();
+  }, [meetingCode]);
 
   const createPeerConnection = (peerId: string, isInitiator: boolean) => {
     console.log(
@@ -850,7 +875,6 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
   const sendSignal = (signal: SignalMessage) => {
     if (stompClient.current?.connected) {
-      console.log("Sending signal:", signal.type, "to:", signal.to);
       stompClient.current.publish({
         destination: `/app/signal/${meetingCode}`,
         body: JSON.stringify(signal),

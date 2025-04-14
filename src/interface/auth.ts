@@ -26,4 +26,5 @@ export interface AuthContextType {
   login: (username: string, password: string) => Promise<{ isAuthenticated: boolean; user: UserType }>;
   logout: () => Promise<void>;
   hasPermission: (requiredRole: UserRole) => boolean
+  setUser: (user: UserType) => void;
 }

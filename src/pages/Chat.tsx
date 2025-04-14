@@ -8,6 +8,8 @@ import type { SignalMessage } from "./Room";
 import { cn } from "../lib/utils";
 import { MemberType } from "../interface/member";
 import { ROLE_MEETING } from "../constants/meeting";
+import { encryptFile, encryptText } from "../utils/aes";
+import { updateFileChat } from "../services/chatService";
 
 export const ChatComponent = ({
   chats,
@@ -23,15 +25,13 @@ export const ChatComponent = ({
   const [message, setMessage] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
+
+  // Fixed useEffect to prevent infinite loops
   useEffect(() => {
-    const chatContainer = document.querySelector("#scroll-container");
-    if (chatContainer) {
-      chatContainer.scrollTop = chatContainer.scrollHeight;
-      chatContainer.scrollIntoView({
-        behavior: "smooth",
-        block: "end",
-        inline: "nearest",
-      });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop =
+        chatContainerRef.current.scrollHeight;
     }
   }, [chats]);
 
@@ -40,26 +40,95 @@ export const ChatComponent = ({
       return;
     }
 
-    sendSignal({
-      type: "chat",
-      from: member.id + "",
-      to: meetingCode,
-      member,
-      payload: {
-        type: file ? file.type : "text",
-        message: message,
-        file: file,
-        timestamp: new Date().toISOString(),
-      },
-    });
+    try {
+      let type = "text";
+      let messageToSend = message;
 
-    // Clear input after sending
-    setMessage("");
-    setFile(null);
+      if (file) {
+        type = file.type.split("/")[0];
+        const fileType = file.type.split("/")[1];
+        encryptFile(file, import.meta.env.VITE_AES_KEY).then(
+          (encriptedFile) => {
+            if (!encriptedFile) {
+              console.error("Error encrypting file");
+              return;
+            }
 
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+            if (messageToSend) {
+              messageToSend = encryptText(
+                messageToSend,
+                import.meta.env.VITE_AES_KEY
+              );
+            }
+
+            const fileName =
+              file.name + "-" + new Date().getTime() + "-" + meetingCode;
+
+            //create file object
+            const blob = new Blob([encriptedFile.data], {
+              type: file.type,
+            });
+            const fileToSend = new File([blob], file.name, {
+              type: file.type,
+              lastModified: new Date().getTime(),
+            });
+
+            updateFileChat(fileToSend).then((res) => {
+              if (res.code !== 200) {
+                console.error("Error uploading file");
+                return;
+              }
+              const fileData = res.data;
+              console.log("fileData", fileData);
+            });
+
+            sendSignal({
+              type: "chat",
+              from: member.id + "",
+              to: meetingCode,
+              member,
+              payload: {
+                type: type,
+                message: messageToSend,
+                file: {
+                  name: fileName,
+                  type: fileType,
+                },
+                timestamp: new Date().toISOString(),
+              },
+            });
+            console.log("encriptedFile", encriptedFile);
+          }
+        );
+      } else {
+        // Encrypt the message
+        messageToSend = encryptText(
+          messageToSend,
+          import.meta.env.VITE_AES_KEY
+        );
+        sendSignal({
+          type: "chat",
+          from: member.id + "",
+          to: meetingCode,
+          member,
+          payload: {
+            type: type,
+            message: messageToSend,
+            timestamp: new Date().toISOString(),
+          },
+        });
+      }
+
+      // Clear input after sending
+      setMessage("");
+      setFile(null);
+
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (error) {
+      console.error("Error in handleSend:", error);
     }
   };
 
@@ -88,6 +157,8 @@ export const ChatComponent = ({
       return "📄";
     }
   };
+
+  console.log("chats", chats);
 
   return (
     <div className="flex flex-col h-full w-full bg-[#0f1420]">
@@ -150,25 +221,6 @@ export const ChatComponent = ({
                         : "bg-gray-700 text-gray-100 rounded-tl-none"
                     )}
                   >
-                    {chat.type !== "text" && chat.file && (
-                      <div className="mb-2">
-                        <a
-                          href={URL.createObjectURL(chat.file)}
-                          download={chat.file.name}
-                          className={cn(
-                            "flex items-center gap-2 p-2 rounded",
-                            isCurrentUser ? "bg-blue-700" : "bg-gray-800",
-                            "hover:bg-opacity-80 transition-colors"
-                          )}
-                        >
-                          <span>{getFileIcon(chat.file.type)}</span>
-                          <span className="text-sm truncate max-w-[150px]">
-                            {chat.file.name}
-                          </span>
-                        </a>
-                      </div>
-                    )}
-
                     {chat.message && (
                       <p className="break-words">{chat.message}</p>
                     )}
