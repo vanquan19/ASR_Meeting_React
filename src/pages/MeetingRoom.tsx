@@ -3,6 +3,7 @@ import { Card } from "../components/ui/card";
 import {
   addMemberToMeeting,
   createMeeting,
+  deleteMeeting,
   deleteMemberInMeeting,
   getAllMeeting,
   getAllMeetingForUser,
@@ -29,6 +30,7 @@ import { getAllUsers } from "../services/userService";
 import { UserType } from "../interface/auth";
 import { toast } from "react-toastify";
 import { ROLE_MEETING } from "../constants/meeting";
+import { useNavigate } from "react-router-dom";
 
 const colors = [
   "bg-blue-500",
@@ -52,6 +54,7 @@ export default function MeetingRoom() {
   const [joined, setJoined] = useState<boolean>(false);
   const user = JSON.parse(localStorage.getItem("user") || "{}");
   const [meetingCode, setMeetingCode] = useState<string>("");
+  const navigate = useNavigate();
 
   const handleJoin = (meetingCode: string) => {
     setMeetingCode(meetingCode);
@@ -70,10 +73,20 @@ export default function MeetingRoom() {
   };
 
   const status = {
-    UPCOMING: () => (
-      <button className="text-blue-500 px-2 py-2 rounded-sm">
-        Sắp diễn ra
+    UPCOMING: (item?: MeetingType) => (
+      <button
+        onClick={() => {
+          setCurrentMeeting(item || null);
+          setShowPreview(true);
+        }}
+        className="bg-green-500 text-white px-2 py-2 rounded-sm md:cursor-pointer"
+      >
+        Tham gia ({item?.members?.filter((m) => m.active).length}/
+        {item?.members?.length})
       </button>
+      // <button className="text-blue-500 px-2 py-2 rounded-sm">
+      //   Sắp diễn ra
+      // </button>
     ),
     ONGOING: (item?: MeetingType) => (
       <button
@@ -83,22 +96,14 @@ export default function MeetingRoom() {
         }}
         className="bg-green-500 text-white px-2 py-2 rounded-sm md:cursor-pointer"
       >
-        Tham gia
+        Tham gia({item?.members?.filter((m) => m.active).length}/
+        {item?.members?.length})
       </button>
     ),
-    NOT_STARTED: (item?: MeetingType) => (
-      <button
-        onClick={() => {
-          setCurrentMeeting(item || null);
-          setShowPreview(true);
-        }}
-        className="bg-green-500 text-white px-2 py-2 rounded-sm md:cursor-pointer"
-      >
-        Tham gia
+    NOT_STARTED: () => (
+      <button className="bg-yellow-500 text-white px-2 py-2 rounded-sm">
+        Chưa bắt đầu
       </button>
-      // <button className="bg-yellow-500 text-white px-2 py-2 rounded-sm">
-      //   Chưa bắt đầu
-      // </button>
     ),
     ENDED: () => (
       <button className=" text-red-500 px-2 py-2 rounded-sm">
@@ -117,24 +122,61 @@ export default function MeetingRoom() {
       </button>
     ),
   };
-  //this function is used to update the participants count of the meeting
-  // const handleUpdatePaticipantsCount = (meetingCode: string, count: number) => {
-  //   setDataMeetingRoom((prev) =>
-  //     prev.map((item) =>
-  //       item.meetingCode === meetingCode ? { ...item, count } : item
-  //     )
-  //   );
-  // };
 
+  const handleNavigateToMeeting = (
+    pointerMeeting: MeetingType,
+    e: React.MouseEvent<HTMLElement, MouseEvent>,
+    tab?: string
+  ): void => {
+    const target = e.target as HTMLElement;
+
+    if (target.closest("button")) {
+      // If the target is a button, do not navigate
+      return;
+    }
+    navigateToMeeting(pointerMeeting, tab);
+  };
+
+  const navigateToMeeting = (meeting: MeetingType, tab?: string) => {
+    navigate(
+      `/meeting-room/detail?meeting=${meeting.meetingCode}${
+        tab ? `&tab=${tab}` : ""
+      }`
+    );
+  };
   useEffect(() => {
     const getData = async () => {
       let response;
+      setDataMeetingRoom([]);
       if (hasPermission("ROLE_SECRETARY")) {
         response = await getAllMeeting();
       } else {
         response = await getAllMeetingForUser(user.id);
       }
-      setDataMeetingRoom(response?.result || []);
+      const result = response?.result.map(async (item: MeetingType) => {
+        const memberInMeeting = await getAllMemberInMeeting(item.id);
+        if (memberInMeeting.code !== 200) {
+          toast.error("Lấy danh sách thành viên thất bại");
+          return;
+        }
+        return memberInMeeting.result;
+      });
+      const resolvedResults = await Promise.all(result || []);
+      resolvedResults.forEach((item) => {
+        if (item) {
+          response.result.forEach((meeting: MeetingType) => {
+            if (item[0].meeting.id === meeting.id) {
+              setDataMeetingRoom((prev) => {
+                const updatedMeeting = {
+                  ...meeting,
+                  members: item,
+                };
+                return [...prev, updatedMeeting];
+              });
+            }
+          });
+        }
+      });
     };
     getData();
   }, [user.id, load]);
@@ -155,7 +197,11 @@ export default function MeetingRoom() {
         </div>
         <div className="grid xl:grid-cols-3 gap-4 md:grid-cols-2 grid-cols-1 w-full">
           {dataMeetingRoom.map((item, index) => (
-            <div key={index} className="w-full">
+            <div
+              key={index}
+              className="w-full"
+              onClick={(e) => handleNavigateToMeeting(item, e)}
+            >
               <Card className="p-4 items-center w-full shadow-lg">
                 <div className="flex gap-4 items-center w-full">
                   <div
@@ -204,9 +250,12 @@ export default function MeetingRoom() {
                       </button>
                     </>
                   )}
-                  <a href="#">
+                  <button
+                    className="md:cursor-pointer"
+                    onClick={() => navigateToMeeting(item, "files")}
+                  >
                     <FileText />
-                  </a>
+                  </button>
                   {status[item.status as keyof typeof status](item) || (
                     <button className="bg-gray-500 text-white px-2 py-1 rounded-sm">
                       Không xác định
@@ -1041,6 +1090,21 @@ const ModalUpdateMeeting = ({
   const handleClose = () => {
     setShowUpdateMeeting(false);
   };
+  const handleDeleteMeeting = async () => {
+    const confirm = window.confirm(
+      "Bạn có chắc chắn muốn xóa cuộc họp này không? Cuộc họp sẽ bị xóa vĩnh viễn và không thể khôi phục lại."
+    );
+    if (confirm) {
+      const response = await deleteMeeting(meeting.id);
+      if (response.code !== 200) {
+        toast.error("Xóa cuộc họp thất bại");
+        return;
+      }
+      toast.success("Xóa cuộc họp thành công");
+      setLoad(!load);
+      setShowUpdateMeeting(false);
+    }
+  };
   return (
     <>
       <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-white/70 z-50 flex items-center justify-center">
@@ -1130,6 +1194,7 @@ const ModalUpdateMeeting = ({
                     />
                   </div>
                 </div>
+
                 <div className="flex justify-end gap-4">
                   <button
                     type="button"
@@ -1137,6 +1202,13 @@ const ModalUpdateMeeting = ({
                     onClick={handleClose}
                   >
                     Hủy bỏ
+                  </button>
+                  <button
+                    type="button"
+                    className="bg-red-500 text-white text-base md:cursor-pointer px-4 py-2 rounded-sm mt-4"
+                    onClick={handleDeleteMeeting}
+                  >
+                    Xóa cuộc họp
                   </button>
                   <button
                     type="submit"

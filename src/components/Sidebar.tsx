@@ -1,23 +1,23 @@
 import { Link } from "react-router-dom";
 import {
-  Bell,
-  MessageCircleMore,
+  // Bell,
+  // MessageCircleMore,
   UsersRound,
   CalendarDays,
 } from "lucide-react";
 import { useState } from "react";
 
 const objSidebar = [
-  {
-    icon: Bell,
-    title: "Hoạt động",
-    link: "/meeting-room/active",
-  },
-  {
-    icon: MessageCircleMore,
-    title: "Tin nhắn",
-    link: "/meeting-room/message",
-  },
+  // {
+  //   icon: Bell,
+  //   title: "Hoạt động",
+  //   link: "/meeting-room/active",
+  // },
+  // {
+  //   icon: MessageCircleMore,
+  //   title: "Tin nhắn",
+  //   link: "/meeting-room/message",
+  // },
   {
     icon: UsersRound,
     title: "Nhóm",
@@ -43,7 +43,7 @@ export default function Sidebar() {
           {objSidebar.map((item, index) => (
             <li
               key={index}
-              className="flex flex-col items-center group"
+              className="flex flex-col items-center group p-2"
               onClick={() => setCurrent(index)}
             >
               <Link

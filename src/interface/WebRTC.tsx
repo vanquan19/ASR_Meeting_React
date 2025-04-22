@@ -1,7 +1,8 @@
-export interface WebRTCUser {
+import { MemberType } from "./member";
+
+export interface Peer {
   id: string;
-  name: string;
-  stream: MediaStream;
-  isCameraOn: boolean;
-  isMutted: boolean;
+  user: MemberType;
+  connection?: RTCPeerConnection;
+  stream?: MediaStream | null;
 }

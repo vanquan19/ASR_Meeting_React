@@ -16,6 +16,7 @@ import joinSound from "../assets/sounds/join-meeting.mp3";
 import type { MeetingType } from "../interface/meeting";
 import logo from "../assets/images/Logo.png";
 import {
+  CircleStop,
   LucideHand,
   LucideMessageCircleMore,
   LucideMic,
@@ -24,8 +25,10 @@ import {
   LucideUsersRound,
   LucideVideo,
   LucideVideoOff,
+  Pause,
+  Play,
 } from "lucide-react";
-import { ChatComponent } from "./Chat";
+import { ChatComponent } from "../components/Chat";
 import type { ChatType } from "../interface/chat";
 import { saveAudio } from "../services/audioService";
 import type { MemberType } from "../interface/member";
@@ -74,7 +77,8 @@ export interface SignalMessage {
     | "screen-share"
     | "request-state"
     | "user-state"
-    | "request-screen";
+    | "request-screen"
+    | "toggle-recording";
 
   from: string;
   to: string;
@@ -102,6 +106,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     img: user.img || "",
     peerId: uuidv4(),
   });
+  const [isStartMeeting, setIsStartMeeting] = useState<boolean>(false);
   const [hasMic, setHasMic] = useState<boolean>(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [peers, setPeers] = useState<Record<string, Peer>>({});
@@ -136,10 +141,12 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     screenShare: boolean;
     muted: boolean;
     isTakeHand: boolean;
+    isStartMeeting: boolean;
   }>({
     screenShare,
     muted,
     isTakeHand,
+    isStartMeeting,
   });
   // Khởi tạo media stream
   useEffect(() => {
@@ -171,6 +178,9 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         setError(
           "Không thể truy cập camera/microphone. Vui lòng kiểm tra quyền."
         );
+        setTimeout(() => {
+          setError("");
+        }, 5000);
       }
     };
 
@@ -265,6 +275,9 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       onStompError: (frame) => {
         console.error("STOMP error:", frame.headers.message);
         setError("Lỗi kết nối: " + frame.headers.message);
+        setTimeout(() => {
+          setError("");
+        }, 5000);
       },
       onDisconnect: () => {
         console.log("Disconnected from WebSocket");
@@ -321,6 +334,9 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       (message: IMessage) => {
         const error = JSON.parse(message.body);
         setError(error.message);
+        setTimeout(() => {
+          setError("");
+        }, 5000);
       }
     );
   };
@@ -413,12 +429,14 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         {
           // giả ấn vào tongleMuted button neu dang on mic
           if (signal.from === me.peerId) return;
-          if (muted) {
+          const isStartMeeting = signal.payload.isStartMeeting;
+          if ((muted && !isStartMeeting) || (!muted && isStartMeeting)) {
             const button = document.querySelector("#toggle-mic-btn");
             if (button) {
               (button as HTMLButtonElement).click();
             }
           }
+
           allStateRef.current.muted = true;
           setHasMic(false);
         }
@@ -473,12 +491,14 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
               screenShare: allStateRef.current.screenShare,
               muted: !allStateRef.current.muted,
               isTakeHand: allStateRef.current.isTakeHand,
+              isStartMeeting: allStateRef.current.isStartMeeting,
             },
           });
         break;
       case "user-state": {
         if (signal.to !== me.peerId) return;
-        const { muted, screenShare, isTakeHand } = signal.payload;
+        const { muted, screenShare, isTakeHand, isStartMeeting } =
+          signal.payload;
         if (screenShare) {
           setCurrentScreenSharer(signal.from);
           // Yêu cầu đổi track screen cho người mới
@@ -495,6 +515,10 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         }
         if (isTakeHand) {
           setTakeHands((prev) => [...prev, signal.from]);
+        }
+        if (isStartMeeting) {
+          setIsStartMeeting(isStartMeeting);
+          allStateRef.current.isStartMeeting = isStartMeeting;
         }
         break;
       }
@@ -517,6 +541,16 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
           sender.replaceTrack(videoTrack);
         }
 
+        break;
+      }
+      case "toggle-recording": {
+        if (signal.from === me.peerId) return;
+        const { isStartMeeting } = signal.payload;
+        setIsStartMeeting(isStartMeeting);
+        allStateRef.current.isStartMeeting = isStartMeeting;
+        if (!isStartMeeting && recorderRef.current) {
+          stopRecording();
+        }
         break;
       }
 
@@ -734,10 +768,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     const decriptedText = decryptText(message, import.meta.env.VITE_AES_KEY);
     chatMessage.message = decriptedText;
     if (file) {
-      chatMessage.file = {
-        name: file.name,
-        type: file.type,
-      };
+      chatMessage.file = file;
     }
 
     setChats((prev) => [...prev, chatMessage]);
@@ -749,6 +780,9 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       const res = await getChatToMeeting(meetingCode);
       if (res.code !== 200) {
         setError(res.message);
+        setTimeout(() => {
+          setError("");
+        }, 5000);
         return;
       }
       setChats((prev) => [...prev, ...res.data]);
@@ -771,10 +805,11 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     const peer = new RTCPeerConnection({
       iceServers: [
         { urls: "stun:stun.l.google.com:19302" },
-        { urls: "stun:stun1.l.google.com:19302" },
-        { urls: "stun:stun2.l.google.com:19302" },
-        { urls: "stun:stun3.l.google.com:19302" },
-        { urls: "stun:stun4.l.google.com:19302" },
+        {
+          urls: "turn:relay1.expressturn.com:3478",
+          username: "efALYHAURNCX3DKZXI",
+          credential: "JChoZQCUqDTEtIe1",
+        },
       ],
     });
 
@@ -915,6 +950,9 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
     if (!me.id || !me.name) {
       setError("Thông tin người dùng không đầy đủ");
+      setTimeout(() => {
+        setError("");
+      }, 5000);
       setLoading(false);
       return;
     }
@@ -1067,6 +1105,9 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     } catch (err) {
       console.error("Error toggling screen share:", err);
       setError("Không thể chia sẻ màn hình. Vui lòng thử lại.");
+      setTimeout(() => {
+        setError("");
+      }, 5000);
     }
   };
 
@@ -1091,6 +1132,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
   const startRecording = () => {
     if (!stream) return;
+    if (!allStateRef.current.isStartMeeting) return;
     try {
       const recorder = new RecordRTC(stream, {
         type: "audio",
@@ -1110,6 +1152,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
   const stopRecording = () => {
     if (!recorderRef.current) return;
+    if (!allStateRef.current.isStartMeeting) return;
     try {
       recorderRef.current.stopRecording(async () => {
         const audioBlob = recorderRef.current?.getBlob();
@@ -1153,6 +1196,48 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       });
     }
   }, [stream, me.peerId, isResetMic]);
+
+  const toggleRecording = () => {
+    if (isStartMeeting) {
+      if (recorderRef.current) {
+        stopRecording();
+      }
+      allStateRef.current.isStartMeeting = false;
+      setIsStartMeeting(false);
+      sendSignal({
+        type: "toggle-recording",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: {
+          isStartMeeting: false,
+        },
+      });
+    } else {
+      allStateRef.current.isStartMeeting = true;
+      setIsStartMeeting(true);
+      sendSignal({
+        type: "clear-mic",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: {
+          isStartMeeting: true,
+        },
+      });
+      setTimeout(() => {
+        sendSignal({
+          type: "toggle-recording",
+          from: me.peerId,
+          to: "all",
+          member: me,
+          payload: {
+            isStartMeeting: true,
+          },
+        });
+      }, 0);
+    }
+  };
 
   const toggleVideo = () => {
     if (stream) {
@@ -1248,6 +1333,47 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
           <div className="flex items-center gap-2">
             {/* Controls */}
             <div className="flex flex-wrap justify-center gap-3">
+              {!isStartMeeting &&
+                (me.meetingRole === "SECRETARY" ||
+                  me.meetingRole === "PRESIDENT") && (
+                  <button
+                    onClick={toggleRecording}
+                    className={`flex items-center gap-2 p-2 rounded-md relative group text-gray-50`}
+                  >
+                    <Play size={24} />
+                    <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                      Bắt đầu ghi âm
+                    </span>
+                  </button>
+                )}
+              {isStartMeeting &&
+                (me.meetingRole === "SECRETARY" ||
+                  me.meetingRole === "PRESIDENT") && (
+                  <button
+                    onClick={toggleRecording}
+                    className={`flex items-center gap-2 p-2 rounded-md relative group text-gray-50`}
+                  >
+                    <Pause size={24} />
+                    <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                      Kết thúc ghi âm
+                    </span>
+                  </button>
+                )}
+              {isStartMeeting &&
+                me.meetingRole !== "PRESIDENT" &&
+                me.meetingRole !== "SECRETARY" && (
+                  <button
+                    className={`flex items-center gap-2 p-2 rounded-md relative group text-red-800`}
+                  >
+                    <CircleStop
+                      size={24}
+                      className="animate-pulse duration-200"
+                    />
+                    <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                      Cuộc họp đang được ghi lại
+                    </span>
+                  </button>
+                )}
               {hasMic && me.meetingRole === "PRESIDENT" && (
                 <button
                   onClick={handleTurnOffAllMic}
@@ -1310,7 +1436,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
               <button
                 onClick={() => toggleMute()}
-                disabled={hasMic}
+                disabled={hasMic && isStartMeeting}
                 id="toggle-mic-btn"
                 className={`relative flex items-center gap-2 p-2 rounded-md group ${
                   muted ? "text-red-700" : " text-gray-300"
@@ -1507,7 +1633,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
           {!currentScreenSharer && !screenShare && (
             <div
-              className={`bg-gray-900 p-1 gap-1 w-full ${
+              className={`bg-gray-900 p-1 gap-1 w-full pb-14 ${
                 showParticipants || showChat ? "flex-1" : "w-full"
               } ${
                 participants.length <= 1
@@ -1556,7 +1682,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
               {Object.values(peers).map((peer) => (
                 <div
                   key={peer.id}
-                  className={`relative overflow-hidden bg-black h-full w-full ${
+                  className={`relative overflow-hidden bg-black h-full w-full pb-14 ${
                     participants.length <= 2 && "max-h-1/2 "
                   } ${participants.length <= 0 && "max-w-1/2 "}`}
                 >
@@ -1681,7 +1807,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
       </div>
 
       {error && (
-        <div className="fixed bottom-4 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        <div className="fixed bottom-20 right-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
           {error}
         </div>
       )}

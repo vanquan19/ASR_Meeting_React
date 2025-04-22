@@ -37,7 +37,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     password: string
   ): Promise<LoginResponse> => {
     const response = await loginService(username, password);
-    console.log(response);
     // Kiểm tra nếu `response` không tồn tại hoặc `code` không phải 200
     if (!response || response.code !== 200) {
       console.error("Login failed:", response);

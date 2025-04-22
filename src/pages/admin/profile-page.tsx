@@ -145,7 +145,7 @@ export default function ProfilePage() {
               <p className="text-base text-muted-foreground">
                 {profile.role === "ROLE_ADMIN"
                   ? "Quản trị viên"
-                  : profile.role === "ROLE_EMPLOYEE"
+                  : profile.role === "ROLE_USER"
                   ? "Nhân viên"
                   : "Thư ký"}{" "}
                 {profile.department && " tại " + profile.department?.name}

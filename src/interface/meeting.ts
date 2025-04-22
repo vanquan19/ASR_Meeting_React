@@ -13,6 +13,7 @@ export interface MeetingType  {
     room: RoomType;
     department: DepartmentType;
     count?: number;
+    members?: MeetingMemberType[];
 }
 
 export interface MeetingResponse {

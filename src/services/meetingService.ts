@@ -27,6 +27,7 @@ export const getAllMeeting: () => Promise<MeetingResponse> = async () => {
 }
 
 
+
 export const createMeeting: ({
   meetingCode,
   roomId,
@@ -76,6 +77,16 @@ export const updateMeeting: ({
         method: "PUT",
         token: token,
         body: JSON.stringify({ id, meetingCode, roomId, departmentId, name, startTime, endTime }),
+    });
+    console.log(response);
+    return response;
+}
+
+export const deleteMeeting: (id: number) => Promise<{code: number, message?:string}> = async (id) => {
+    const token = localStorage.getItem('token') || '';
+    const response = await fetchApi("meetings/" + id, {
+        method: "DELETE",
+        token: token,
     });
     console.log(response);
     return response;
@@ -150,7 +161,7 @@ export const getAllMemberInMeeting: (id: number, search?: string) => Promise<{
 }> = async (id, search) => {
     const token = localStorage.getItem('token') || '';
 
-    const response = await fetchApi(`members/${id}${search && "?search="+search}` , {
+    const response = await fetchApi(`members/${id}${search ? "?search="+search : ""}` , {
         method: "GET",
         token: token,
     });
