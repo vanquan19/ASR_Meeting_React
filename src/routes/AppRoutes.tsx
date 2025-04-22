@@ -32,10 +32,7 @@ const AppRoutes = () => {
                 <Route index element={<MeetingRoom />} />
                 <Route path="calendar" element={<Calendar />} />
                 <Route path="profile" element={<ProfilePage />} />
-                <Route
-                  path="meeting/:meetingCode"
-                  element={<DetailMeeting />}
-                />
+                <Route path="detail" element={<DetailMeeting />} />
               </Route>
             </Route>
 

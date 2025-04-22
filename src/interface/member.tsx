@@ -1,3 +1,5 @@
+import { UserType } from "./auth";
+
 export interface MemberType {
   id?: number;
   name: string;
@@ -6,4 +8,6 @@ export interface MemberType {
   img: string;
   meetingRole?: string;
   peerId: string;
+  user?: UserType;
+  active?: boolean;
 }

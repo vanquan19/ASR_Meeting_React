@@ -39,7 +39,7 @@ export default function Login() {
     }
 
     // Validate password
-    if (password.length < 4) {
+    if (password.length < 1) {
       newErrors.password = "Mật khẩu không hợp lệ";
     }
 
@@ -51,7 +51,7 @@ export default function Login() {
 
     // Login
     const response = await login(username, password);
-    if (!response) {
+    if (!response.isAuthenticated) {
       setError({
         genaral: "Tài khoản hoặc mật khẩu không chính xác",
       });
@@ -152,11 +152,11 @@ export default function Login() {
             <div className="absolute w-full top-10 left-10 opacity-90">
               <div className="relative p-4">
                 <CardNote className="bg-primary absolute z-10">
-                  <CardTitle>Xem lại nhiện vụ với đội nhóm</CardTitle>
+                  <CardTitle>Xem lại nhiệm vụ với đội nhóm</CardTitle>
                   <CardParagraph>9:30 AM - 10:30 PM</CardParagraph>
                 </CardNote>
                 <CardNote className="bg-gray-700 absolute top-14 left-14">
-                  <CardTitle>Xem lại nhiện vụ với đội nhóm</CardTitle>
+                  <CardTitle>Xem lại nhiệm vụ với đội nhóm</CardTitle>
                   <CardParagraph>9:30 AM - 10:30 PM</CardParagraph>
                 </CardNote>
               </div>

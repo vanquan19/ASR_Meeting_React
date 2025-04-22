@@ -4,12 +4,12 @@ import { useState, useRef, useEffect } from "react";
 import { Paperclip, SendHorizontal } from "lucide-react";
 
 import type { ChatType } from "../interface/chat";
-import type { SignalMessage } from "./Room";
 import { cn } from "../lib/utils";
 import { MemberType } from "../interface/member";
 import { ROLE_MEETING } from "../constants/meeting";
 import { encryptFile, encryptText } from "../utils/aes";
 import { updateFileChat } from "../services/chatService";
+import { SignalMessage } from "../interface/websocket";
 
 export const ChatComponent = ({
   chats,
@@ -18,7 +18,7 @@ export const ChatComponent = ({
   meetingCode,
 }: {
   chats: ChatType[];
-  sendSignal: (signal: SignalMessage) => void;
+  sendSignal: (signal: SignalMessage, meetingCode: string) => void;
   member: MemberType;
   meetingCode: string;
 }) => {
@@ -82,21 +82,24 @@ export const ChatComponent = ({
               console.log("fileData", fileData);
             });
 
-            sendSignal({
-              type: "chat",
-              from: member.id + "",
-              to: meetingCode,
-              member,
-              payload: {
-                type: type,
-                message: messageToSend,
-                file: {
-                  name: fileName,
-                  type: fileType,
+            sendSignal(
+              {
+                type: "chat",
+                from: member.id + "",
+                to: meetingCode,
+                member,
+                payload: {
+                  type: type,
+                  message: messageToSend,
+                  file: {
+                    name: fileName,
+                    type: fileType,
+                  },
+                  timestamp: new Date().toISOString(),
                 },
-                timestamp: new Date().toISOString(),
               },
-            });
+              meetingCode
+            );
             console.log("encriptedFile", encriptedFile);
           }
         );
@@ -106,17 +109,20 @@ export const ChatComponent = ({
           messageToSend,
           import.meta.env.VITE_AES_KEY
         );
-        sendSignal({
-          type: "chat",
-          from: member.id + "",
-          to: meetingCode,
-          member,
-          payload: {
-            type: type,
-            message: messageToSend,
-            timestamp: new Date().toISOString(),
+        sendSignal(
+          {
+            type: "chat",
+            from: member.id + "",
+            to: meetingCode,
+            member,
+            payload: {
+              type: type,
+              message: messageToSend,
+              timestamp: new Date().toISOString(),
+            },
           },
-        });
+          meetingCode
+        );
       }
 
       // Clear input after sending
@@ -158,8 +164,6 @@ export const ChatComponent = ({
     }
   };
 
-  console.log("chats", chats);
-
   return (
     <div className="flex flex-col h-full w-full bg-[#0f1420]">
       {/* Messages area - taking up all available space */}
@@ -174,7 +178,8 @@ export const ChatComponent = ({
         </div>
         <div className="p-4 space-y-4">
           {chats.map((chat, index) => {
-            const isCurrentUser = chat.sender.id === member.id;
+            const isCurrentUser =
+              chat.sender.employeeCode === member.employeeCode;
 
             return (
               <div

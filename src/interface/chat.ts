@@ -6,9 +6,7 @@ export interface ChatType {
     receiver: MemberType | string;
     type: "file" | "text" | "image" | "video" | "audio";
     message: string;
-    file?: {
-        name: string;
-        type: string;
-    };
+    file?: File | Blob;
+    fileName?: string;
     timestamp: string;
 }
