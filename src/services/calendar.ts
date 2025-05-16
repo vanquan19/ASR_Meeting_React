@@ -9,6 +9,5 @@ export const getCalendar = async (month: number, year: number) => {
         method: "GET",
         token: token,
     });
-    console.log("Calendar response:", response);
     return response;
 }

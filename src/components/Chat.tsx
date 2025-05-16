@@ -1,27 +1,25 @@
 import type React from "react";
 
 import { useState, useRef, useEffect } from "react";
-import { Paperclip, SendHorizontal } from "lucide-react";
+import { SendHorizontal } from "lucide-react";
 
 import type { ChatType } from "../interface/chat";
 import { cn } from "../lib/utils";
 import { MemberType } from "../interface/member";
 import { ROLE_MEETING } from "../constants/meeting";
 import { encryptFile, encryptText } from "../utils/aes";
-import { updateFileChat } from "../services/chatService";
-import { SignalMessage } from "../interface/websocket";
+import { useSocket } from "../context/SocketContext";
 
 export const ChatComponent = ({
   chats,
-  sendSignal,
   member,
   meetingCode,
 }: {
   chats: ChatType[];
-  sendSignal: (signal: SignalMessage, meetingCode: string) => void;
   member: MemberType;
   meetingCode: string;
 }) => {
+  const { sendSignal } = useSocket();
   const [message, setMessage] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -46,7 +44,6 @@ export const ChatComponent = ({
 
       if (file) {
         type = file.type.split("/")[0];
-        const fileType = file.type.split("/")[1];
         encryptFile(file, import.meta.env.VITE_AES_KEY).then(
           (encriptedFile) => {
             if (!encriptedFile) {
@@ -61,39 +58,25 @@ export const ChatComponent = ({
               );
             }
 
-            const fileName =
-              file.name + "-" + new Date().getTime() + "-" + meetingCode;
-
-            //create file object
-            const blob = new Blob([encriptedFile.data], {
-              type: file.type,
-            });
-            const fileToSend = new File([blob], file.name, {
-              type: file.type,
-              lastModified: new Date().getTime(),
-            });
-
-            updateFileChat(fileToSend).then((res) => {
-              if (res.code !== 200) {
-                console.error("Error uploading file");
-                return;
-              }
-              const fileData = res.data;
-              console.log("fileData", fileData);
-            });
+            const base64File = btoa(
+              new Uint8Array(encriptedFile.data).reduce(
+                (data, byte) => data + String.fromCharCode(byte),
+                ""
+              )
+            );
 
             sendSignal(
               {
                 type: "chat",
-                from: member.id + "",
+                from: member.employeeCode,
                 to: meetingCode,
-                member,
+                member: member,
                 payload: {
                   type: type,
                   message: messageToSend,
                   file: {
-                    name: fileName,
-                    type: fileType,
+                    name: encriptedFile.name,
+                    data: base64File,
                   },
                   timestamp: new Date().toISOString(),
                 },
@@ -112,9 +95,9 @@ export const ChatComponent = ({
         sendSignal(
           {
             type: "chat",
-            from: member.id + "",
+            from: member.employeeCode + "",
             to: meetingCode,
-            member,
+            member: member,
             payload: {
               type: type,
               message: messageToSend,
@@ -179,6 +162,7 @@ export const ChatComponent = ({
         <div className="p-4 space-y-4">
           {chats.map((chat, index) => {
             const isCurrentUser =
+              typeof chat.sender !== "string" &&
               chat.sender.employeeCode === member.employeeCode;
 
             return (
@@ -191,7 +175,7 @@ export const ChatComponent = ({
               >
                 {!isCurrentUser && (
                   <div className="h-8 w-8 rounded-full overflow-hidden flex-shrink-0 bg-gray-700">
-                    {chat.sender.img ? (
+                    {typeof chat.sender !== "string" && chat.sender.img ? (
                       <img
                         src={chat.sender.img || "/placeholder.svg"}
                         alt={chat.sender.name}
@@ -199,7 +183,9 @@ export const ChatComponent = ({
                       />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center text-sm font-medium text-white">
-                        {chat.sender.name.substring(0, 2).toUpperCase()}
+                        {typeof chat.sender !== "string"
+                          ? chat.sender.name.substring(0, 2).toUpperCase()
+                          : "??"}
                       </div>
                     )}
                   </div>
@@ -208,10 +194,15 @@ export const ChatComponent = ({
                 <div className="flex flex-col max-w-[75%]">
                   {!isCurrentUser && (
                     <span className="text-xs text-gray-400 mb-1">
-                      {chat.sender.name} [{" "}
+                      {typeof chat.sender !== "string"
+                        ? chat.sender.name
+                        : "Unknown"}{" "}
+                      [{" "}
                       {
                         ROLE_MEETING.find(
-                          (role) => role.id === chat.sender.meetingRole
+                          (role) =>
+                            typeof chat.sender !== "string" &&
+                            role.id === chat.sender.meetingRole
                         )?.name
                       }
                       ]
@@ -238,7 +229,7 @@ export const ChatComponent = ({
 
                 {isCurrentUser && (
                   <div className="h-8 w-8 rounded-full overflow-hidden flex-shrink-0 bg-blue-700">
-                    {chat.sender.img ? (
+                    {typeof chat.sender !== "string" && chat.sender.img ? (
                       <img
                         src={chat.sender.img || "/placeholder.svg"}
                         alt={chat.sender.name}
@@ -246,7 +237,9 @@ export const ChatComponent = ({
                       />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center text-sm font-medium text-white">
-                        {chat.sender.name.substring(0, 2).toUpperCase()}
+                        {typeof chat.sender !== "string"
+                          ? chat.sender.name.substring(0, 2).toUpperCase()
+                          : "??"}
                       </div>
                     )}
                   </div>
@@ -267,7 +260,7 @@ export const ChatComponent = ({
       {/* Input area - matching the exact style from the screenshot */}
       <div className="p-2 mt-auto mb-16 border-t border-gray-800">
         <div className="flex items-center gap-2 bg-gray-700 rounded-full px-4 py-2">
-          <input
+          {/* <input
             type="file"
             className="hidden"
             id="file-input"
@@ -284,7 +277,7 @@ export const ChatComponent = ({
             className="text-gray-400 hover:text-white cursor-pointer"
           >
             <Paperclip className="h-5 w-5" />
-          </label>
+          </label> */}
 
           <input
             value={message}

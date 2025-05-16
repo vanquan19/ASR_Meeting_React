@@ -89,7 +89,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="space-y-6 ">
+    <div className="space-y-6 md:pb-0 pb-20">
       <div className="flex flex-col gap-6 md:flex-row h-fit">
         <Card className="w-full  md:w-1/3">
           <CardContent className="flex flex-col items-center space-y-4 p-8">

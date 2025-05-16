@@ -41,7 +41,6 @@ const updateRoom = async (id: number, {roomCode, roomName}: {
         token: localStorage.getItem('token') || '',
         body: JSON.stringify({ roomCode, roomName }),
     });
-    console.log(response);
     if (response.code !== 200) {
         console.error("Network response was not ok");
        return ;
@@ -54,7 +53,6 @@ const deleteRoom = async (id: number) => {
         method: "DELETE",
         token: localStorage.getItem('token') || '',
     });
-    console.log(response);
     if (response.code !== 200) {
         console.error("Network response was not ok");
        return ;

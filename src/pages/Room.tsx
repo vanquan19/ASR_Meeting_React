@@ -35,8 +35,8 @@ import type { MemberType } from "../interface/member";
 import { ROLE_MEETING } from "../constants/meeting";
 import { toast } from "react-toastify";
 import { captureScreen } from "../services/screenSharing";
-import { getChatToMeeting } from "../services/chatService";
-import { decryptText } from "../utils/aes";
+import { getChatToMeeting, saveChat } from "../services/chatService";
+import { decryptFile, decryptText } from "../utils/aes";
 
 declare module "react" {
   interface VideoHTMLAttributes<T> extends HTMLAttributes<T> {
@@ -755,23 +755,47 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   };
 
   const handleChatMessage = async (signal: SignalMessage) => {
-    const { payload, member } = signal;
-    const { type, message, file } = payload;
-    const chatMessage: ChatType = {
+    const chat: ChatType = {
       id: Date.now(),
-      sender: member,
+      sender: signal.member,
       receiver: signal.to,
-      type: type,
-      timestamp: payload.timestamp,
-    } as ChatType;
+      message: signal.payload.message,
+      type: signal.payload.type,
+      timestamp: signal.payload.timestamp,
+    };
+    // Save chat to database
+    if (signal.payload.type !== "text" && signal.payload.file.data) {
+      const encriptedFile = btoa(
+        new Uint8Array(signal.payload.file.data).reduce(
+          (data, byte) => data + String.fromCharCode(byte),
+          ""
+        )
+      );
+      const blob = new Blob([encriptedFile]);
+      const file = new File([blob], signal.payload.file.name);
+      const decryptedFile = await decryptFile(
+        file,
+        import.meta.env.VITE_AES_KEY
+      );
 
-    const decriptedText = decryptText(message, import.meta.env.VITE_AES_KEY);
-    chatMessage.message = decriptedText;
-    if (file) {
-      chatMessage.file = file;
+      const blobDecryptedFile = new Blob([decryptedFile.data]);
+      chat.file = blobDecryptedFile;
+      chat.fileName = decryptedFile.name;
     }
-
-    setChats((prev) => [...prev, chatMessage]);
+    // Decrypt the message
+    const decryptedText = decryptText(
+      signal.payload.message,
+      import.meta.env.VITE_AES_KEY
+    );
+    chat.message = decryptedText;
+    setChats((prev) => (prev ? [...prev, chat] : [chat]));
+    await saveChat({
+      ...chat,
+      sender: signal.from,
+      message: signal.payload.message,
+    }).catch((error) => {
+      console.error("Error saving chat:", error);
+    });
   };
 
   //initial chat
@@ -785,7 +809,18 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         }, 5000);
         return;
       }
-      setChats((prev) => [...prev, ...res.data]);
+      setChats(
+        res.result.map((chat: ChatType) => {
+          const decryptedText = decryptText(
+            chat.message,
+            import.meta.env.VITE_AES_KEY
+          );
+          return {
+            ...chat,
+            message: decryptedText,
+          };
+        })
+      );
     };
     getChat();
   }, [meetingCode]);
@@ -804,11 +839,15 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
     const peer = new RTCPeerConnection({
       iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
         {
-          urls: "turn:relay1.expressturn.com:3478",
-          username: "efALYHAURNCX3DKZXI",
-          credential: "JChoZQCUqDTEtIe1",
+          urls: [import.meta.env.VITE_WEBRTC_SERVER_URL1],
+          username: import.meta.env.VITE_WEBRTC_SERVER_USERNAME,
+          credential: import.meta.env.VITE_WEBRTC_SERVER_PASSWORD,
+        },
+        {
+          urls: [import.meta.env.VITE_WEBRTC_SERVER_URL2],
+          username: import.meta.env.VITE_WEBRTC_SERVER_USERNAME,
+          credential: import.meta.env.VITE_WEBRTC_SERVER_PASSWORD,
         },
       ],
     });
@@ -1199,11 +1238,11 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
   const toggleRecording = () => {
     if (isStartMeeting) {
+      allStateRef.current.isStartMeeting = false;
+      setIsStartMeeting(false);
       if (recorderRef.current) {
         stopRecording();
       }
-      allStateRef.current.isStartMeeting = false;
-      setIsStartMeeting(false);
       sendSignal({
         type: "toggle-recording",
         from: me.peerId,
@@ -1682,7 +1721,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
               {Object.values(peers).map((peer) => (
                 <div
                   key={peer.id}
-                  className={`relative overflow-hidden bg-black h-full w-full pb-14 ${
+                  className={`relative overflow-hidden bg-black h-full w-full ${
                     participants.length <= 2 && "max-h-1/2 "
                   } ${participants.length <= 0 && "max-w-1/2 "}`}
                 >
@@ -1798,7 +1837,6 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
               <ChatComponent
                 chats={chats}
                 member={me}
-                sendSignal={sendSignal}
                 meetingCode={meetingCode}
               />
             </div>

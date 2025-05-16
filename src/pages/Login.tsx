@@ -66,8 +66,8 @@ export default function Login() {
 
   return (
     <div className="flex items-center justify-center h-screen w-screen bg-blue-200/50">
-      <CardContainer className="grid-cols-5 w-full  xl:mx-40 lg:mx-32 md:mx-24 sm:mx-16 mx-0">
-        <Card className="w-full shadow-none col-span-2 border-none">
+      <CardContainer className="lg:grid-cols-5 grid-cols-4  w-full  xl:mx-40 lg:mx-32 md:mx-24 sm:mx-16">
+        <Card className="w-full shadow-none md:col-span-2 col-span-4 border-none">
           <div className="">
             <div className="mb-8">
               <img src={logo} className="size-24" alt="logo" />
@@ -136,7 +136,7 @@ export default function Login() {
             </form>
           </div>
         </Card>
-        <Card className="w-full shadow-none col-span-3 border-none">
+        <Card className="w-full shadow-none lg:col-span-3 md:col-span-2 md:block hidden border-none ">
           <div
             className="bg-cover bg-center h-full w-full rounded-2xl relative"
             style={{ backgroundImage: `url(${bgLogin})` }}
@@ -149,7 +149,7 @@ export default function Login() {
                 <CircleX size={24} />
               </button>
             </div>
-            <div className="absolute w-full top-10 left-10 opacity-90">
+            <div className="absolute w-full top-10 left-10 opacity-90 xl:block hidden">
               <div className="relative p-4">
                 <CardNote className="bg-primary absolute z-10">
                   <CardTitle>Xem lại nhiệm vụ với đội nhóm</CardTitle>
@@ -162,7 +162,7 @@ export default function Login() {
               </div>
             </div>
             <div>
-              <div className="absolute w-full bottom-0 left-1/3 opacity-50">
+              <div className="absolute w-fit bottom-0 left-1/3 opacity-50 xl:block hidden">
                 <img src={calendar} className="size-54" alt="" />
               </div>
             </div>

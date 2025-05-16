@@ -4,7 +4,6 @@ const getAllDepartments = async () => {
     method: "GET",
     token: localStorage.getItem('token') || '',
   });
-  console.log(response);
   if(!response || response.code !== 200) {
     throw new Error("Failed to fetch departments");
   }

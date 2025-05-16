@@ -14,14 +14,19 @@ export const useSocket = () => {
 
 import { ReactNode } from "react";
 import { SignalMessage, WsContextType } from "../interface/websocket";
+import { useAuth } from "./AuthContext";
+import { UserType } from "../interface/auth";
 
 interface SocketProviderProps {
   children: ReactNode;
 }
 
 export const SocketProvider = (props: SocketProviderProps) => {
+  const { user, isAuthenticated, hasPermission } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [socket, setSocket] = useState<Client | null>(null);
+  const [connected, setConnected] = useState(false);
+
   useEffect(() => {
     const ws = new SockJS(`${import.meta.env.VITE_WS_URL}`);
     const client = new Client({
@@ -37,6 +42,7 @@ export const SocketProvider = (props: SocketProviderProps) => {
       },
       onConnect: () => {
         console.log("Connected to WebSocket");
+        setConnected(true);
       },
       onStompError: (frame) => {
         console.error("STOMP error:", frame.headers.message);
@@ -44,6 +50,7 @@ export const SocketProvider = (props: SocketProviderProps) => {
       },
       onDisconnect: () => {
         console.log("Disconnected from WebSocket");
+        setConnected(false);
       },
     });
 
@@ -54,11 +61,9 @@ export const SocketProvider = (props: SocketProviderProps) => {
       if (client.connected) {
         client.deactivate();
       }
-      console.log("WebSocket connection closed");
     };
   }, []);
 
-  console.log("socket current", socket);
   const sendSignal = (signal: SignalMessage, meetingCode: string) => {
     if (socket) {
       socket.publish({
@@ -70,10 +75,34 @@ export const SocketProvider = (props: SocketProviderProps) => {
     }
   };
 
+  useEffect(() => {
+    if (
+      !hasPermission("ROLE_ADMIN") &&
+      isAuthenticated &&
+      socket &&
+      connected
+    ) {
+      sendSignal(
+        {
+          type: "user-action",
+          from: user?.employeeCode || "",
+          to: "dashboard",
+          member: user as UserType,
+          payload: {
+            connected: connected,
+            timestamp: new Date().toISOString(),
+          },
+        },
+        "dashboard"
+      );
+    }
+  }, [socket, connected, hasPermission, isAuthenticated]);
+
   return (
     <SocketContext.Provider
       value={{
         socket: socket,
+        connected: connected,
         sendSignal,
         error,
         setError,

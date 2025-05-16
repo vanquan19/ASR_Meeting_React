@@ -5,7 +5,6 @@ export const getAllUsers = async () => {
         method: "GET",
         token: token,
     });
-    console.log(response);
     return response;
 }
 
@@ -15,7 +14,6 @@ export const getUserById = async (userId: string) => {
         method: "GET",
         token: token,
     });
-    console.log(response);
     return response;
 }
 
@@ -25,7 +23,6 @@ export const getMyInfo = async () => {
         method: "GET",
         token: token,
     });
-    console.log(response);
     return response;
 }
 
@@ -52,7 +49,6 @@ export const createUser = async ({
         token: token,
         body: JSON.stringify({ name, employeeCode, email, dob, role, departmentId, degree }),
     });
-    console.log(response);
     return response;
 }
 export const updateUser = async (id:number, {
@@ -78,7 +74,6 @@ export const updateUser = async (id:number, {
         token: token,
         body: JSON.stringify({ name, employeeCode, email, dob, role, departmentId, degree }),
     });
-    console.log(response);
     return response;
 }
 
@@ -122,7 +117,6 @@ export const deleteUser = async (id:number) => {
         method: "DELETE",
         token: token,
     });
-    console.log(response);
     return response;
 }
 
@@ -136,6 +130,5 @@ export const changePassword = async ({oldPassword, newPassword} :{
         token: token,
         body: JSON.stringify({ oldPassword, newPassword }),
     });
-    console.log(response);
     return response;
 }
