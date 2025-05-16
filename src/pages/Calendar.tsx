@@ -118,7 +118,7 @@ export default function Calendar() {
 
   return (
     <div className="container mx-auto p-4">
-      <div className="overflow-hidden">
+      <div className="">
         {/* Calendar Header */}
         <div className=" p-4 flex items-center justify-between border-b">
           <h1 className="text-xl font-semibold text-gray-800 first-letter:uppercase">
@@ -194,9 +194,10 @@ export default function Calendar() {
                     <div
                       key={`${week}-${day}`}
                       className={`
-                        h-28 p-2 border border-gray-100 relative
-                        ${dayNumber ? "bg-white" : "bg-gray-50"}
-                        ${isCurrentDay ? "bg-blue-50" : ""}
+                        xl:h-28 lg:h-20 md:h-16 sm:h-12 h-10  p-2 border border-gray-100 relative 
+                        ${dayNumber ? "bg-white " : "bg-gray-50 "}
+                        ${isCurrentDay ? "bg-blue-50 " : ""}
+                        ${(meetings?.length ?? 0) > 0 ? "group " : ""}
                       `}
                     >
                       {dayNumber && (
@@ -215,7 +216,30 @@ export default function Calendar() {
                           </div>
 
                           {/* Meetings for this day */}
-                          <div className="mt-6 space-y-1 overflow-y-auto max-h-[calc(100%-1.5rem)]">
+                          <div className="mt-6 max-h-[calc(100%-1.5rem)] group-hover:hidden lg:block flex items-center gap-2">
+                            {meetings?.slice(0, 1)?.map((meeting, index) => (
+                              <div key={index}>
+                                <div
+                                  key={index}
+                                  className="text-xs p-1 bg-blue-100 text-blue-800 rounded truncate lg:block hidden"
+                                >
+                                  {meeting.name || "Untitled Meeting"}
+                                </div>
+                                <div className="size-2 bg-red-600 rounded-full lg:hidden block"></div>
+                              </div>
+                            ))}
+                            {(meetings?.length ?? 0) > 1 && (
+                              <>
+                                <div className="text-xs text-gray-500 lg:block hidden">
+                                  +{(meetings?.length ?? 0) - 1} more
+                                </div>
+                                <div className="text-xs text-gray-500 lg:hidden block">
+                                  +{(meetings?.length ?? 0) - 1}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                          <div className="absolute bg-gray-100 p-2 rounded-lg z-20 mt-6 -left-1 h-fit hidden group-hover:block transition-all duration-300">
                             {meetings?.map((meeting, index) => (
                               <div
                                 key={index}

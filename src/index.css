@@ -34,3 +34,15 @@
         transform: translateY(-30px);
     }
   }
+  .docx-viewer p{
+    text-align: justify;
+  }
+
+  .docx-viewer strong{
+    display: inline-block;
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+    padding: 0px 0px 10px 0px;
+  }
+

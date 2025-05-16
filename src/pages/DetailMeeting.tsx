@@ -1,23 +1,29 @@
+import type React from "react";
+
 import { useEffect, useRef, useState } from "react";
 import { v4 as uuid } from "uuid";
-import { MeetingType } from "../interface/meeting";
+import type { MeetingType } from "../interface/meeting";
 import {
   getAllMeeting,
+  getAllMeetingForUser,
   getAllMemberInMeeting,
 } from "../services/meetingService";
 import { useSocket } from "../context/SocketContext";
-import { ChatType } from "../interface/chat";
-import VideoRoom, { SignalMessage } from "./Room";
-import { IMessage } from "@stomp/stompjs";
-import { MemberType } from "../interface/member";
-import { UserType } from "../interface/auth";
+import type { ChatType } from "../interface/chat";
+import VideoRoom, { type SignalMessage } from "./Room";
+import type { IMessage } from "@stomp/stompjs";
+import type { MemberType } from "../interface/member";
+import type { UserType } from "../interface/auth";
 import {
   DotIcon,
   FileText,
   MessageCircleMore,
-  Paperclip,
   SendHorizontal,
   Users,
+  X,
+  Menu,
+  Download,
+  FileAudio,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { ROLE_MEETING } from "../constants/meeting";
@@ -30,6 +36,12 @@ import {
 import leavingMeetingSound from "../assets/sounds/leaving-meeting.mp3";
 import { exportFilePDF, exportFileWords } from "../services/textService";
 import { useAuth } from "../context/AuthContext";
+import DocxViewer from "../components/doc-view";
+import DocxEditor from "../components/doc-editor";
+import { getChatToMeeting, saveChat } from "../services/chatService";
+import { handleDownload } from "../utils/download";
+import { useNavigate } from "react-router-dom";
+import { mergeAudio } from "../services/audioService";
 
 const tabs = [
   { name: "chat", label: "Tin nhắn" },
@@ -72,6 +84,7 @@ const status = {
     </button>
   ),
 };
+
 const DetailMeeting = () => {
   const query = new URLSearchParams(window.location.search);
   const meetingCode = query.get("meeting");
@@ -88,15 +101,19 @@ const DetailMeeting = () => {
     employeeCode: user?.employeeCode || "",
     peerId: uuid(),
   });
-
+  const { hasPermission } = useAuth();
   const [tab, setTab] = useState(tabParam || tabs[0].name);
   const [meeting, setMeeting] = useState<MeetingType>();
   const [members, setMembers] = useState<MemberType[]>([]);
-  const [showMember, setShowMember] = useState(true);
+  const [showMember, setShowMember] = useState(false);
   const [showRoom, setShowRoom] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   useEffect(() => {
     const fetchData = async () => {
-      const response = await getAllMeeting();
+      let response = hasPermission("ROLE_SECRETARY")
+        ? await getAllMeeting()
+        : await getAllMeetingForUser(user?.id + "" || "");
       if (response.code !== 200) {
         console.error("Error fetching meetings");
         return;
@@ -111,6 +128,7 @@ const DetailMeeting = () => {
     };
     fetchData();
   }, [meetingCode]);
+
   useEffect(() => {
     const fetchMembers = async () => {
       // Fetch members for the meeting
@@ -136,30 +154,72 @@ const DetailMeeting = () => {
     fetchMembers();
   }, [meeting]);
 
+  const navigate = useNavigate();
   const handleTabChange = (selectedTab: string) => {
     setTab(selectedTab);
+    navigate(
+      `/meeting-room/detail?meeting=${meetingCode}${
+        selectedTab ? `&tab=${selectedTab}` : ""
+      }`
+    );
+    // Close mobile menu when changing tabs on mobile
+    setMobileMenuOpen(false);
   };
+
+  // Handle screen size changes
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Close member panel on mobile when changing tabs
+  useEffect(() => {
+    if (window.innerWidth < 768) {
+      setShowMember(false);
+    }
+  }, [tab]);
 
   return (
     <div className="flex flex-col h-screen">
-      <div className="flex items-center justify-between p-4">
-        <h1 className="text-2xl font-bold">{meeting?.name}</h1>
-        <div className="flex gap-2">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className="flex items-center">
+          <button
+            className="md:hidden mr-2"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            <Menu className="h-6 w-6" />
+          </button>
+          <h1 className="text-xl md:text-2xl font-bold truncate max-w-[200px] md:max-w-full">
+            {meeting?.name}
+          </h1>
+        </div>
+
+        {/* Desktop controls */}
+        <div className="hidden md:flex gap-2">
           <div className="flex space-x-4">
             {tab === "chat" && (
               <button
                 onClick={() => handleTabChange("files")}
-                className={`px-4 py-2 rounded transition-all duration-150 bg-gray-200 md:cursor-pointer`}
+                className="px-4 py-2 rounded transition-all duration-150 bg-gray-200 md:cursor-pointer"
+                aria-label="Switch to files tab"
               >
-                <FileText />
+                <FileText className="h-5 w-5" />
               </button>
             )}
             {tab === "files" && (
               <button
                 onClick={() => handleTabChange("chat")}
-                className={`px-4 py-2 rounded transition-all duration-150 bg-gray-200 md:cursor-pointer`}
+                className="px-4 py-2 rounded transition-all duration-150 bg-gray-200 md:cursor-pointer"
+                aria-label="Switch to chat tab"
               >
-                <MessageCircleMore />
+                <MessageCircleMore className="h-5 w-5" />
               </button>
             )}
           </div>
@@ -168,60 +228,135 @@ const DetailMeeting = () => {
             className={`px-4 py-2 rounded transition-all duration-150 md:cursor-pointer ${
               showMember ? "bg-blue-500 text-white" : "bg-gray-200"
             }`}
+            aria-label={showMember ? "Hide members" : "Show members"}
           >
-            {showMember ? <Users /> : <Users />}
+            <Users className="h-5 w-5" />
           </button>
           {meeting?.status &&
             status[meeting.status as keyof typeof status](
               meeting,
               meeting.status === "ONGOING"
                 ? () => {
-                    // Handle join meeting logic here
                     setShowRoom(true);
                   }
                 : undefined
             )}
         </div>
-      </div>
-      <div className="flex justify-between gap-4 mt-4">
-        <div className="flex flex-col flex-grow p-4 space-y-4 w-full border-r border-gray-200">
-          {tab === "chat" && meetingCode && (
-            <ChatMeetingTab meetingCode={meetingCode} me={me} />
-          )}
-          {tab === "files" && meetingCode && (
-            <FileMeetingTab meetingCode={meetingCode} />
-          )}
+
+        {/* Mobile status button - always visible */}
+        <div className="md:hidden">
+          {meeting?.status &&
+            meeting.status === "ONGOING" &&
+            status[meeting.status as keyof typeof status](meeting, () => {
+              setShowRoom(true);
+              setMobileMenuOpen(false);
+            })}
         </div>
+      </div>
+
+      {/* Mobile menu */}
+      {mobileMenuOpen && (
+        <div className="md:hidden bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+          <div className="flex space-x-4">
+            <button
+              onClick={() => handleTabChange("chat")}
+              className={`px-4 py-2 rounded transition-all duration-150 ${
+                tab === "chat" ? "bg-blue-500 text-white" : "bg-gray-200"
+              }`}
+            >
+              <MessageCircleMore className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => handleTabChange("files")}
+              className={`px-4 py-2 rounded transition-all duration-150 ${
+                tab === "files" ? "bg-blue-500 text-white" : "bg-gray-200"
+              }`}
+            >
+              <FileText className="h-5 w-5" />
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              setShowMember(!showMember);
+              setMobileMenuOpen(false);
+            }}
+            className={`px-4 py-2 rounded transition-all duration-150 ${
+              showMember ? "bg-blue-500 text-white" : "bg-gray-200"
+            }`}
+          >
+            <Users className="h-5 w-5" />
+          </button>
+        </div>
+      )}
+
+      {/* Main content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Main content area */}
+        <div
+          className={`flex-grow ${
+            showMember ? "hidden md:block md:flex-grow-0 md:w-3/5" : "w-full"
+          } overflow-hidden`}
+        >
+          <div className="h-full overflow-y-auto no-scrollbar mt-4">
+            {tab === "chat" && meetingCode && (
+              <ChatMeetingTab meetingCode={meetingCode} me={me} />
+            )}
+            {tab === "files" && meetingCode && (
+              <FileMeetingTab
+                meetingCode={meetingCode}
+                meetingName={meeting?.name || ""}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Members panel - full screen on mobile when active */}
         {showMember && (
-          <div className="p-4 min-w-96 flex flex-col space-y-2">
-            <h2 className="text-lg font-bold text-center">
-              Thành viên ({members.filter((member) => !!member.active).length}/
-              {members.length})
-            </h2>
-            <ul>
-              {members.map((member) => (
-                <li key={member.id} className="py-2 flex justify-between">
-                  <div>
-                    <h4 className="text-lg font-semibold text-gray-800">
-                      {member.user?.name}
-                    </h4>
-                    <p className="text-sm text-gray-500">
-                      {member.user?.employeeCode}
-                    </p>
-                  </div>
-                  <button
-                    className={`${
-                      member.active ? "text-green-500" : "text-red-500"
-                    } flex items-center`}
+          <div className="fixed inset-0 z-10 md:static md:z-0 bg-white md:w-2/5 flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 md:hidden pt-[80px] md:pt-0">
+              <h2 className="text-lg font-bold">Thành viên</h2>
+              <button
+                onClick={() => setShowMember(false)}
+                className="p-1 rounded-full hover:bg-gray-100"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto no-scrollbar flex-1">
+              <h2 className="text-lg font-bold text-center md:mb-4 hidden md:block">
+                Thành viên ({members.filter((member) => !!member.active).length}
+                /{members.length})
+              </h2>
+              <ul className="space-y-2 md:mt-4">
+                {members.map((member) => (
+                  <li
+                    key={member.id}
+                    className="py-2 flex justify-between items-center border-b border-gray-100"
                   >
-                    <DotIcon className="size-12" />
-                  </button>
-                </li>
-              ))}
-            </ul>
+                    <div>
+                      <h4 className="text-base md:text-lg font-semibold text-gray-800">
+                        {member.user?.name}
+                      </h4>
+                      <p className="text-xs md:text-sm text-gray-500">
+                        {member.user?.employeeCode}
+                      </p>
+                    </div>
+                    <div
+                      className={`${
+                        member.active ? "text-green-500" : "text-red-500"
+                      } flex items-center`}
+                    >
+                      <DotIcon className="size-8 md:size-12" />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Video Room */}
       {showRoom && (
         <VideoRoom
           meetingCode={meetingCode || ""}
@@ -241,6 +376,7 @@ const DetailMeeting = () => {
     </div>
   );
 };
+
 export default DetailMeeting;
 
 const ChatMeetingTab = ({
@@ -257,7 +393,7 @@ const ChatMeetingTab = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  // Fixed useEffect to prevent infinite loops
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop =
@@ -266,7 +402,6 @@ const ChatMeetingTab = ({
   }, [chats]);
 
   useEffect(() => {
-    console.log("socket", socket);
     if (socket && socket.connected) {
       socket.subscribe(
         `/topic/room/${meetingCode}/signal`,
@@ -277,13 +412,11 @@ const ChatMeetingTab = ({
               id: Date.now(),
               sender: signal.member,
               receiver: signal.to,
-              message: decryptText(
-                signal.payload.message,
-                import.meta.env.VITE_AES_KEY
-              ),
+              message: signal.payload.message,
               type: signal.payload.type,
               timestamp: signal.payload.timestamp,
             };
+            // Save chat to database
             if (signal.payload.type !== "text" && signal.payload.file.data) {
               const encriptedFile = btoa(
                 new Uint8Array(signal.payload.file.data).reduce(
@@ -302,13 +435,50 @@ const ChatMeetingTab = ({
               chat.file = blobDecryptedFile;
               chat.fileName = decryptedFile.name;
             }
-            console.log("chat", chat);
+
+            // Decrypt the message
+            const decryptedText = decryptText(
+              signal.payload.message,
+              import.meta.env.VITE_AES_KEY
+            );
+            chat.message = decryptedText;
             setChats((prev) => (prev ? [...prev, chat] : [chat]));
+            await saveChat({
+              ...chat,
+              sender: signal.from,
+              message: signal.payload.message,
+            }).catch((error) => {
+              console.error("Error saving chat:", error);
+            });
           }
         }
       );
     }
   }, [meetingCode, socket]);
+
+  useEffect(() => {
+    const fetchChat = async () => {
+      const response = await getChatToMeeting(meetingCode);
+      if (response.code !== 200) {
+        console.error("Error fetching chat messages");
+        return;
+      }
+      const chats = response.result as unknown as ChatType[];
+      setChats(
+        chats.map((chat: ChatType) => {
+          const decryptedText = decryptText(
+            chat.message,
+            import.meta.env.VITE_AES_KEY
+          );
+          return {
+            ...chat,
+            message: decryptedText,
+          };
+        })
+      );
+    };
+    fetchChat();
+  }, [meetingCode]);
 
   const handleSend = () => {
     if (message.trim() === "" && !file) {
@@ -425,15 +595,17 @@ const ChatMeetingTab = ({
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-gray-100 rounded">
-      {/* Messages area - taking up all available space */}
+    <div className="flex flex-col h-full w-full bg-gray-100 rounded md:pb-0 pb-20">
+      {/* Messages area */}
       <div
-        id="scroll-container"
-        className="flex-1 overflow-y-auto no-scrollbar min-h-[70vh]"
+        ref={chatContainerRef}
+        className="flex-1 overflow-y-auto no-scrollbar min-h-[60vh] md:min-h-[70vh] "
       >
-        <div className="p-4 space-y-4">
+        <div className="p-2 md:p-4 space-y-3 md:space-y-4 ">
           {chats.map((chat, index) => {
-            const isCurrentUser = chat.sender.employeeCode === me.employeeCode;
+            const isCurrentUser =
+              typeof chat.sender !== "string" &&
+              chat.sender.employeeCode === me.employeeCode;
 
             return (
               <div
@@ -445,7 +617,7 @@ const ChatMeetingTab = ({
               >
                 {!isCurrentUser && (
                   <div className="h-8 w-8 rounded-full overflow-hidden flex-shrink-0 bg-gray-700">
-                    {chat.sender.img ? (
+                    {typeof chat.sender !== "string" && chat.sender.img ? (
                       <img
                         src={chat.sender.img || "/placeholder.svg"}
                         alt={chat.sender.name}
@@ -453,19 +625,26 @@ const ChatMeetingTab = ({
                       />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center text-sm font-medium text-white">
-                        {chat.sender.name.substring(0, 2).toUpperCase()}
+                        {typeof chat.sender !== "string"
+                          ? chat.sender.name.substring(0, 2).toUpperCase()
+                          : chat.sender.substring(0, 2).toUpperCase()}
                       </div>
                     )}
                   </div>
                 )}
 
-                <div className="flex flex-col max-w-[75%]">
+                <div className="flex flex-col max-w-[70%] md:max-w-[75%]">
                   {!isCurrentUser && (
                     <span className="text-xs text-gray-400 mb-1">
-                      {chat.sender.name} [{" "}
+                      {typeof chat.sender !== "string"
+                        ? chat.sender.name
+                        : chat.sender}{" "}
+                      [{" "}
                       {
                         ROLE_MEETING.find(
-                          (role) => role.id === chat.sender.meetingRole
+                          (role) =>
+                            typeof chat.sender !== "string" &&
+                            role.id === chat.sender.meetingRole
                         )?.name
                       }
                       ]
@@ -481,19 +660,23 @@ const ChatMeetingTab = ({
                     )}
                   >
                     {chat.message && (
-                      <p className="break-words">{chat.message}</p>
+                      <p className="break-words text-sm md:text-base">
+                        {chat.message}
+                      </p>
                     )}
                     {chat.file && chat.type === "image" && (
                       <div className="flex items-center gap-2 mt-2">
                         <img
-                          src={URL.createObjectURL(chat.file)}
+                          src={
+                            URL.createObjectURL(chat.file) || "/placeholder.svg"
+                          }
                           alt={chat.fileName}
-                          className="h-32 w-32 object-cover"
+                          className="h-24 w-24 md:h-32 md:w-32 object-cover rounded"
                         />
                       </div>
                     )}
 
-                    <div className="text-xs mt-1 opacity-70 text-right text-white">
+                    <div className="text-xs mt-1 opacity-70 text-right">
                       {formatTime(chat.timestamp)}
                     </div>
                   </div>
@@ -501,7 +684,7 @@ const ChatMeetingTab = ({
 
                 {isCurrentUser && (
                   <div className="h-8 w-8 rounded-full overflow-hidden flex-shrink-0 bg-blue-700">
-                    {chat.sender.img ? (
+                    {typeof chat.sender !== "string" && chat.sender.img ? (
                       <img
                         src={chat.sender.img || "/placeholder.svg"}
                         alt={chat.sender.name}
@@ -509,7 +692,9 @@ const ChatMeetingTab = ({
                       />
                     ) : (
                       <div className="h-full w-full flex items-center justify-center text-sm font-medium text-white">
-                        {chat.sender.name.substring(0, 2).toUpperCase()}
+                        {typeof chat.sender !== "string"
+                          ? chat.sender.name.substring(0, 2).toUpperCase()
+                          : chat.sender.substring(0, 2).toUpperCase()}
                       </div>
                     )}
                   </div>
@@ -519,18 +704,27 @@ const ChatMeetingTab = ({
           })}
         </div>
       </div>
-      {/* preview file if exits */}
+
+      {/* File preview */}
       {file && (
         <div className="flex items-center gap-2 p-2 bg-gray-800 border-t border-gray-700 text-white">
           <span>{getFileIcon(file.type)}</span>
-          <span className="text-sm truncate max-w-[150px]">{file.name}</span>
+          <span className="text-sm truncate max-w-[150px] md:max-w-[250px]">
+            {file.name}
+          </span>
+          <button
+            onClick={() => setFile(null)}
+            className="ml-auto text-gray-400 hover:text-white"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
       )}
 
-      {/* Input area - matching the exact style from the screenshot */}
+      {/* Input area */}
       <div className="p-2 mt-auto border-t border-gray-300">
-        <div className="flex items-center gap-2  text-gray-900 rounded-full bg-gray-50 px-4 py-2">
-          <input
+        <div className="flex items-center gap-2 text-gray-900 rounded-full bg-gray-50 px-3 py-2">
+          {/* <input
             type="file"
             className="hidden"
             id="file-input"
@@ -544,17 +738,17 @@ const ChatMeetingTab = ({
 
           <label
             htmlFor="file-input"
-            className="text-gray-400 hover:text-white cursor-pointer"
+            className="text-gray-400 hover:text-gray-600 cursor-pointer"
           >
             <Paperclip className="h-5 w-5" />
-          </label>
+          </label> */}
 
           <input
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Aa..."
-            className="flex-1 bg-transparent border-none text-gray-800 placeholder:text-gray-400 focus:outline-none"
+            className="flex-1 bg-transparent border-none text-gray-800 placeholder:text-gray-400 focus:outline-none text-sm md:text-base"
           />
 
           <button
@@ -569,7 +763,14 @@ const ChatMeetingTab = ({
     </div>
   );
 };
-const FileMeetingTab = ({ meetingCode }: { meetingCode: string }) => {
+
+const FileMeetingTab = ({
+  meetingCode,
+  meetingName,
+}: {
+  meetingCode: string;
+  meetingName: string;
+}) => {
   const { socket } = useSocket();
   const { hasPermission } = useAuth();
   const [docx, setDocx] = useState<{
@@ -581,38 +782,37 @@ const FileMeetingTab = ({ meetingCode }: { meetingCode: string }) => {
     data: string;
   } | null>(null);
   const [files, setFiles] = useState<ChatType[]>([]);
-  useEffect(() => {
-    const initialFile = async () => {
-      // Initialize file component here
-      const response = await exportFileWords(meetingCode);
-      if (response.code !== 200) {
-        console.error("Error fetching file");
-        return;
-      }
-      //base64 decode
-      const fileName = response.result.fileName;
+  const [showEdit, setShowEdit] = useState(false);
+
+  const fetchDocuments = async () => {
+    // Fetch docx file
+    const docxResponse = await exportFileWords(meetingCode);
+    if (docxResponse.code === 200) {
+      const fileName = docxResponse.result.fileName;
       const fileData =
         "data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64," +
-        response.result.fileContent;
-      console.log("fileData", fileData);
+        docxResponse.result.fileContent;
       setDocx({ name: fileName, data: fileData });
-    };
-    const fetchFilePDF = async () => {
-      const response = await exportFilePDF(meetingCode);
-      if (response.code !== 200) {
-        console.error("Error fetching file");
-        return;
-      }
-      //base64 decode
-      const fileName = response.result.fileName;
-      const fileData =
-        "data:application/pdf;base64," + response.result.fileContent;
+    } else {
+      console.error("Error fetching docx file");
+    }
 
+    // Fetch PDF file
+    const pdfResponse = await exportFilePDF(meetingCode);
+    if (pdfResponse.code === 200) {
+      const fileName = pdfResponse.result.fileName;
+      const fileData =
+        "data:application/pdf;base64," + pdfResponse.result.fileContent;
       setPdf({ name: fileName, data: fileData });
-    };
-    initialFile();
-    fetchFilePDF();
+    } else {
+      console.error("Error fetching PDF file");
+    }
+  };
+
+  useEffect(() => {
+    fetchDocuments();
   }, [meetingCode]);
+
   useEffect(() => {
     if (socket && socket.connected) {
       socket.subscribe(
@@ -635,30 +835,94 @@ const FileMeetingTab = ({ meetingCode }: { meetingCode: string }) => {
       );
     }
   }, [meetingCode, socket]);
+
+  const handleDownloadAudio = async () => {
+    if (!meetingCode) return;
+    const response = await mergeAudio(meetingCode);
+    if (response.code !== 200) {
+      console.error("Error merging audio files");
+      return;
+    }
+    const audioBlob = new Blob([response.result], { type: "audio/mpeg" });
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const a = document.createElement("a");
+    a.href = audioUrl;
+    a.download = `${meetingName}.mp3`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(audioUrl);
+  };
+
+  const handleSaveSuccess = () => {
+    // Refresh documents after saving
+    fetchDocuments();
+  };
+
   return (
-    <div>
-      <h2 className="text-base">Tài liệu cuộc họp</h2>
-      <div className="flex items-start gap-2 flex-col">
-        {docx && hasPermission("ROLE_SECRETARY") && (
-          <>
-            <button
-              onClick={() => {
-                if (docx) {
-                  const a = document.createElement("a");
-                  a.href = docx.data;
-                  a.download = docx.name;
-                  a.click();
-                }
-              }}
-              className="flex items-center gap-2 bg-gray-200 text-gray-800 border border-gray-600 px-4 py-2 rounded"
-            >
-              <FileText className="h-4 w-4 text-blue-500" />
-              {docx.name}
-            </button>
-          </>
-        )}
-        {pdf && hasPermission("ROLE_SECRETARY") && (
-          <>
+    <>
+      {showEdit && docx && hasPermission("ROLE_SECRETARY") && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center  bg-opacity-50 w-full h-full">
+          <div className="bg-white rounded-lg w-screen h-screen flex flex-col">
+            <DocxEditor
+              base64Docx={docx.data.split(",")[1]}
+              meetingCode={meetingCode}
+              onClose={() => setShowEdit(false)}
+              onSave={handleSaveSuccess}
+            />
+          </div>
+        </div>
+      )}
+      <div className="md:pb-4 px-4 pb-24">
+        <div
+          className="flex items-start gap-2 flex-col docx-viewer"
+          onDoubleClick={() => {
+            if (hasPermission("ROLE_SECRETARY")) {
+              setShowEdit(true);
+            } else {
+              const viewer = document.querySelector(".docx-viewer");
+              if (viewer) {
+                handleDownload(viewer.innerHTML, meetingName);
+              }
+            }
+          }}
+        >
+          <div className="flex justify-between gap-2 w-full">
+            <h2 className="text-base mt-4 uppercase font-bold py-3">
+              BIÊN BẢN CUỘC HỌP {meetingName}
+            </h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  handleDownloadAudio();
+                }}
+                className="md:cursor-pointer"
+              >
+                <FileAudio className="h-5 w-5 text-gray-500" />
+              </button>
+              <button
+                onClick={() => {
+                  const viewer = document.querySelector(".docx-viewer");
+                  if (viewer) {
+                    handleDownload(viewer.innerHTML, meetingName);
+                  }
+                }}
+                className="md:cursor-pointer"
+              >
+                <Download className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+          </div>
+          {/* display docx in div */}
+          {docx && <DocxViewer base64Docx={docx.data.split(",")[1]} />}
+        </div>
+
+        <h2 className="text-base mt-4 uppercase font-semibold py-3">
+          Tài liệu
+        </h2>
+
+        <div className="flex flex-col space-y-4">
+          {pdf && (
             <button
               onClick={() => {
                 if (pdf) {
@@ -668,30 +932,47 @@ const FileMeetingTab = ({ meetingCode }: { meetingCode: string }) => {
                   a.click();
                 }
               }}
-              className="flex items-center gap-2 bg-gray-200 text-gray-800 border border-red-400  px-4 py-2 rounded"
+              className="flex items-center gap-2 bg-gray-200 text-gray-800 border border-red-400 px-4 py-2 rounded w-full md:w-auto"
             >
               <FileText className="h-4 w-4 text-red-400" />
-              {pdf.name}
+              <span className="truncate">{pdf.name} (Bản gốc)</span>
             </button>
-          </>
-        )}
-      </div>
-      <h2 className="text-base mt-4">Tài liệu đã gửi</h2>
-      <div className="flex flex-col space-y-4">
-        {files.map((file) => (
-          <div key={file.id} className="flex items-center space-x-4">
-            <img
-              src={file.sender.img}
-              alt={file.sender.name}
-              className="w-10 h-10 rounded-full"
-            />
-            <div className="flex flex-col">
-              <span className="font-bold">{file.sender.name}</span>
-              <span>{file.message}</span>
+          )}
+
+          {}
+
+          {files.map((file) => (
+            <div
+              key={file.id}
+              className="flex items-center space-x-4 p-2 border-b border-gray-100"
+            >
+              <div className="h-10 w-10 rounded-full overflow-hidden flex-shrink-0 bg-gray-700">
+                {typeof file.sender !== "string" && file.sender.img ? (
+                  <img
+                    src={file.sender.img || "/placeholder.svg"}
+                    alt={file.sender.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="h-full w-full flex items-center justify-center text-sm font-medium text-white">
+                    {typeof file.sender !== "string"
+                      ? file.sender.name.substring(0, 2).toUpperCase()
+                      : file.sender.substring(0, 2).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <div className="flex flex-col flex-1 min-w-0">
+                <span className="font-bold text-sm truncate">
+                  {typeof file.sender !== "string"
+                    ? file.sender.name
+                    : file.sender}
+                </span>
+                <span className="text-sm truncate">{file.message}</span>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   );
 };

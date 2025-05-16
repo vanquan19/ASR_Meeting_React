@@ -17,6 +17,7 @@ import ProfilePage from "../pages/admin/profile-page";
 import MeetingRoomPage from "../pages/admin/meeting-room-page";
 import Calendar from "../pages/Calendar";
 import DetailMeeting from "../pages/DetailMeeting";
+import NotificationPage from "../pages/notification";
 
 const AppRoutes = () => {
   return (
@@ -33,6 +34,7 @@ const AppRoutes = () => {
                 <Route path="calendar" element={<Calendar />} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="detail" element={<DetailMeeting />} />
+                <Route path="notification" element={<NotificationPage />} />
               </Route>
             </Route>
 

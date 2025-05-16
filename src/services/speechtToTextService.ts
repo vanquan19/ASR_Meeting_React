@@ -9,6 +9,5 @@ export const speechToText = async (audio: File) => {
         },
         body: formData,
     });
-    console.log(response);
     return response;
 }

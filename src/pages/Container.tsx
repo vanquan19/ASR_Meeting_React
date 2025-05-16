@@ -6,9 +6,9 @@ export default function Container() {
   return (
     <div>
       <Navbar />
-      <div className="flex gap-8">
+      <div className="flex md:flex-row flex-col-reverse">
         <Sidebar />
-        <div className="pt-6 mx-16 w-full">
+        <div className="pt-6 md:mx-16 w-full">
           <Outlet />
         </div>
       </div>

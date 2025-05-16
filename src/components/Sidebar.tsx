@@ -4,15 +4,20 @@ import {
   // MessageCircleMore,
   UsersRound,
   CalendarDays,
+  Bell,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSocket } from "../context/SocketContext";
+import { useAuth } from "../context/AuthContext";
+import { IMessage } from "@stomp/stompjs";
+import { SignalMessage } from "../interface/websocket";
 
 const objSidebar = [
-  // {
-  //   icon: Bell,
-  //   title: "Hoạt động",
-  //   link: "/meeting-room/active",
-  // },
+  {
+    icon: Bell,
+    title: "Thông báo",
+    link: "/meeting-room/notification",
+  },
   // {
   //   icon: MessageCircleMore,
   //   title: "Tin nhắn",
@@ -31,19 +36,39 @@ const objSidebar = [
 ];
 
 export default function Sidebar() {
+  const { socket, connected } = useSocket();
+  const { user } = useAuth();
+  const [notification, setNotification] = useState<number>(0);
   const [current, setCurrent] = useState<number>(
     objSidebar.findIndex((item) => item.link === window.location.pathname)
       ? objSidebar.findIndex((item) => item.link === window.location.pathname)
       : 0
   );
+  useEffect(() => {
+    if (socket && connected) {
+      console.log("Connected to WebSocket for notifications");
+      socket.subscribe(
+        `/topic/room/${user?.employeeCode}/signal`,
+        async (message: IMessage) => {
+          const signal: SignalMessage = JSON.parse(message.body);
+          if (signal.type === "notification") {
+            setNotification((prev) => prev + 1);
+          }
+          if (signal.type === "read-notification") {
+            setNotification(0);
+          }
+        }
+      );
+    }
+  }, [socket, connected, user?.employeeCode]);
   return (
-    <div className="w-20">
-      <nav className="p-4 bg-gray-100/70 h-screen fixed pt-6">
-        <ul className="flex flex-col gap-4">
+    <div className="md:w-20 w-full">
+      <nav className="md:p-4 bg-gray-100 md:h-screen md:w-auto md:mt-16 md:pt-8 w-full py-4 md:top-0 bottom-0 left-0 fixed z-40 ">
+        <ul className="flex md:flex-col flex-row md:gap-4 gap-12 justify-center">
           {objSidebar.map((item, index) => (
             <li
               key={index}
-              className="flex flex-col items-center group p-2"
+              className="flex flex-col items-center group relative"
               onClick={() => setCurrent(index)}
             >
               <Link
@@ -64,6 +89,11 @@ export default function Sidebar() {
                   {item.title}
                 </span>
               </Link>
+              {item.title === "Thông báo" && notification > 0 && (
+                <div className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full px-2 py-1">
+                  {notification}
+                </div>
+              )}
             </li>
           ))}
         </ul>

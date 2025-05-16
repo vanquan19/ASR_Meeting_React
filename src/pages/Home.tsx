@@ -28,13 +28,13 @@ export default function Home() {
           Đăng nhập
         </button>
       </header>
-      <main className="bg-gray-100 h-full flex justify-between xl:px-44 lg:px-32 md:px-20 px-10  gap-10 items-center">
-        <div>
-          <div className="xl:text-7xl lg:5xl 4xl flex flex-col gap-3 font-bold text-gray-800 mb-4">
+      <main className="bg-gray-100/15 h-full flex relative justify-between xl:px-44 lg:px-32 md:px-20 px-10  gap-10 items-center lg:flex-row flex-col ">
+        <div className="flex flex-col lg:gap-0 lg:relative absolute bottom-5 lg:w-1/2 w-full lg:items-start items-center">
+          <div className="xl:text-7xl lg:text-5xl text-4xl flex flex-col gap-3 font-bold text-gray-800 mb-4 lg:text-left text-center">
             <h1>Họp Online</h1>
             <h1>Chọn KMA Meet</h1>
           </div>
-          <span className="xl:text-2xl lg:text-xl text-gray-600 font-medium">
+          <span className="xl:text-2xl lg:text-xl text-gray-600 font-medium lg:text-left text-center">
             Ứng dụng quản lý lịch họp và tài liệu tài liệu
           </span>
           <br />
@@ -48,7 +48,7 @@ export default function Home() {
         <img
           src={logo}
           alt="logo"
-          className="xl:size-[35vw]"
+          className="xl:size-[35vw] lg:size-[40vw] md:size-[50vw] sm:size-[60vw] size-[80vw] lg:relative m-auto absolute -z-10"
           style={{ animation: "bounceNew 1.5s linear infinite" }}
         />
       </main>

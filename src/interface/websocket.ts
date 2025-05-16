@@ -1,8 +1,9 @@
 import { Client } from "@stomp/stompjs";
 import { MemberType } from "./member";
+import { UserType } from "./auth";
 
 export interface SignalMessage {
-    type:
+  type:
     | "offer"
     | "answer"
     | "ice-candidate"
@@ -20,19 +21,23 @@ export interface SignalMessage {
     | "screen-share"
     | "request-state"
     | "user-state"
-    | "request-screen";
+    | "request-screen"
+    | "toggle-recording"
+    | "notification"
+    | "read-notification"
+    | "user-action";
 
-    from: string;
-    to: string;
-    member: MemberType;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    payload: any;
+  from: string;
+  to: string;
+  member: MemberType | UserType | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  payload: any;
 }
 
-
 export interface WsContextType {
-    socket: Client | null;
-    sendSignal: (signal: SignalMessage, meetingCode:string) => void;
-    error: string | null;
-    setError: React.Dispatch<React.SetStateAction<string | null>>;
+  socket: Client | null;
+  connected: boolean;
+  sendSignal: (signal: SignalMessage, meetingCode: string) => void;
+  error: string | null;
+  setError: React.Dispatch<React.SetStateAction<string | null>>;
 }
