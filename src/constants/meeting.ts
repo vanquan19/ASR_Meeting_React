@@ -1,9 +1,7 @@
 export const ROLE_MEETING = [
-    { id: "COMMISSIONER", name: "Ủy viên" },
-    { id: "CRITIC", name: "Phê bình" },
-    { id: "GUEST", name: "Khách mời" },
-    { id: "PRESIDENT", name: "Chủ trì" },
-    { id: "SECRETARY", name: "Thư ký" },
-  ];
-  
-  
+  { id: "COMMISSIONER", name: "Ủy viên" },
+  { id: "CRITIC", name: "Phản biện" },
+  { id: "GUEST", name: "Khách mời" },
+  { id: "PRESIDENT", name: "Chủ tọa" },
+  { id: "SECRETARY", name: "Thư ký" },
+];

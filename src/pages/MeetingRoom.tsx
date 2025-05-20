@@ -100,8 +100,7 @@ export default function MeetingRoom() {
         }}
         className="bg-green-500 text-white px-2 py-2 rounded-sm md:cursor-pointer"
       >
-        Tham gia({item?.members?.filter((m) => m.active).length}/
-        {item?.members?.length})
+        Tham gia
       </button>
     ),
     NOT_STARTED: () => (
