@@ -324,8 +324,7 @@ const DetailMeeting = () => {
             </div>
             <div className="p-4 overflow-y-auto no-scrollbar flex-1">
               <h2 className="text-lg font-bold text-center md:mb-4 hidden md:block">
-                Thành viên ({members.filter((member) => !!member.active).length}
-                /{members.length})
+                Thành viên
               </h2>
               <ul className="space-y-2 md:mt-4">
                 {members.map((member) => (
@@ -838,16 +837,25 @@ const FileMeetingTab = ({
 
   const handleDownloadAudio = async () => {
     if (!meetingCode) return;
+
     const response = await mergeAudio(meetingCode);
-    if (response.code !== 200) {
-      console.error("Error merging audio files");
-      return;
+    const base64Data = response.audio_base64;
+
+    const binaryString = atob(base64Data);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
     }
-    const audioBlob = new Blob([response.result], { type: "audio/mpeg" });
+
+    // Tạo Blob từ binary
+    const audioBlob = new Blob([bytes], { type: "audio/ogg" });
+
+    // Tạo link tải xuống
     const audioUrl = URL.createObjectURL(audioBlob);
     const a = document.createElement("a");
     a.href = audioUrl;
-    a.download = `${meetingName}.mp3`;
+    a.download = `${meetingName}.ogx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

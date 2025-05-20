@@ -839,13 +839,14 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
 
     const peer = new RTCPeerConnection({
       iceServers: [
+        // Thêm STUN server trước
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
         {
-          urls: [import.meta.env.VITE_WEBRTC_SERVER_URL1],
-          username: import.meta.env.VITE_WEBRTC_SERVER_USERNAME,
-          credential: import.meta.env.VITE_WEBRTC_SERVER_PASSWORD,
-        },
-        {
-          urls: [import.meta.env.VITE_WEBRTC_SERVER_URL2],
+          urls: [
+            import.meta.env.VITE_WEBRTC_SERVER_URL1,
+            import.meta.env.VITE_WEBRTC_SERVER_URL2,
+          ],
           username: import.meta.env.VITE_WEBRTC_SERVER_USERNAME,
           credential: import.meta.env.VITE_WEBRTC_SERVER_PASSWORD,
         },
