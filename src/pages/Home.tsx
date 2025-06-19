@@ -35,7 +35,7 @@ export default function Home() {
             <h1>Chọn KMA Meet</h1>
           </div>
           <span className="xl:text-2xl lg:text-xl text-gray-600 font-medium lg:text-left text-center">
-            Ứng dụng quản lý lịch họp và tài liệu tài liệu
+            Ứng dụng quản lý lịch họp và tài liệu
           </span>
           <br />
           <button
