@@ -1,54 +1,59 @@
-# React + TypeScript + Vite
+# 🧑‍💻 Ứng dụng Họp Trực Tuyến (Online Meeting App)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Ứng dụng họp trực tuyến giúp người dùng tạo và tham gia các cuộc họp video từ xa một cách dễ dàng và bảo mật. Hệ thống hỗ trợ gọi video nhóm, chia sẻ màn hình, nhắn tin thời gian thực và quản lý thành viên cuộc họp.
 
-Currently, two official plugins are available:
+## LINK: https://virtualsecretary.click/
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Tài khoản thử nghiệm: quanlvan mk: 01/01/2003
+- Tài khoản thử nghiệm: khankdk mk: 01/01/2003
 
-## Expanding the ESLint configuration
+## 🌐 Tính năng chính
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- 🔒 Tạo và tham gia phòng họp với mã bảo mật
+- 🎥 Gọi video nhóm thời gian thực (WebRTC)
+- 💬 Trò chuyện (chat) trong phòng họp
+- 👥 Quản lý thành viên và phân quyền (host, participant)
+- 📱 Giao diện thân thiện trên cả máy tính và di động
+- 📷 Hỗ trợ chia sẻ màn hình (screen sharing)
+- 🔔 Thông báo khi có thành viên tham gia / rời cuộc họp
+- 💬 Chuyển đổi giọng nói trong cuộc họp thành văn bản, cho phép sửa, tải về file word, pdf(Bản chuyển đổi gốc), Audio ghi âm.
 
-```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+## 🛠️ Công nghệ sử dụng
+
+- **Frontend**: ReactJS + TypeScript + TailwindCSS
+- **Backend**: Spring Boot
+- **AI**: Whisper, Python
+- **Giao tiếp thời gian thực**: WebRTC, Websocket / STOMP
+- **Xác thực**: JWT
+- **Triển khai**: Nginx, VPS
+
+## 🚀 Cài đặt & chạy ứng dụng
+
+### 1. Clone project
+
+```bash
+git clone https://github.com/vanquan19/ASR_Meeting_React.git
+cd asr_meeting_react
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 2. Cài đặt dependencies
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+npm install
+```
 
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
+### 3. Cấu hình biến môi trường
+
+```bash
+Tạo file .env trong thư mục với nội dung .env.example
+```
+
+### 4. Khởi chạy ứng dụng
+
+```bash
+- Chạy môi trường dev
+npm run dev
+- build ứng dụng
+npm run build
+
 ```

@@ -35,7 +35,7 @@ import type { MemberType } from "../interface/member";
 import { ROLE_MEETING } from "../constants/meeting";
 import { toast } from "react-toastify";
 import { captureScreen } from "../services/screenSharing";
-import { getChatToMeeting, saveChat } from "../services/chatService";
+import { getChatToMeeting } from "../services/chatService";
 import { decryptFile, decryptText } from "../utils/aes";
 
 declare module "react" {
@@ -427,10 +427,9 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         break;
       case "clear-mic":
         {
-          // giả ấn vào tongleMuted button neu dang on mic
-          if (signal.from === me.peerId) return;
-          const isStartMeeting = signal.payload.isStartMeeting;
-          if ((muted && !isStartMeeting) || (!muted && isStartMeeting)) {
+          // tắt mic của tất cả người dùng
+
+          if (!allStateRef.current.muted) {
             const button = document.querySelector("#toggle-mic-btn");
             if (button) {
               (button as HTMLButtonElement).click();
@@ -548,9 +547,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
         const { isStartMeeting } = signal.payload;
         setIsStartMeeting(isStartMeeting);
         allStateRef.current.isStartMeeting = isStartMeeting;
-        if (!isStartMeeting && recorderRef.current) {
-          stopRecording();
-        }
+
         break;
       }
 
@@ -789,13 +786,6 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
     );
     chat.message = decryptedText;
     setChats((prev) => (prev ? [...prev, chat] : [chat]));
-    await saveChat({
-      ...chat,
-      sender: signal.from,
-      message: signal.payload.message,
-    }).catch((error) => {
-      console.error("Error saving chat:", error);
-    });
   };
 
   //initial chat
@@ -1238,34 +1228,46 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
   }, [stream, me.peerId, isResetMic]);
 
   const toggleRecording = () => {
-    if (isStartMeeting) {
-      allStateRef.current.isStartMeeting = false;
-      setIsStartMeeting(false);
-      if (recorderRef.current) {
-        stopRecording();
+    if (!allStateRef.current.muted) {
+      const button = document.querySelector("#toggle-mic-btn");
+      if (button) {
+        (button as HTMLButtonElement).click();
       }
-      sendSignal({
-        type: "toggle-recording",
-        from: me.peerId,
-        to: "all",
-        member: me,
-        payload: {
-          isStartMeeting: false,
-        },
-      });
-    } else {
-      allStateRef.current.isStartMeeting = true;
-      setIsStartMeeting(true);
+    }
+    if (isStartMeeting) {
       sendSignal({
         type: "clear-mic",
         from: me.peerId,
         to: "all",
         member: me,
-        payload: {
-          isStartMeeting: true,
-        },
+        payload: {},
+      });
+
+      setTimeout(() => {
+        allStateRef.current.isStartMeeting = false;
+        setIsStartMeeting(false);
+
+        sendSignal({
+          type: "toggle-recording",
+          from: me.peerId,
+          to: "all",
+          member: me,
+          payload: {
+            isStartMeeting: false,
+          },
+        });
+      }, 0);
+    } else {
+      sendSignal({
+        type: "clear-mic",
+        from: me.peerId,
+        to: "all",
+        member: me,
+        payload: {},
       });
       setTimeout(() => {
+        allStateRef.current.isStartMeeting = true;
+        setIsStartMeeting(true);
         sendSignal({
           type: "toggle-recording",
           from: me.peerId,
@@ -1381,7 +1383,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                     className={`flex items-center gap-2 p-2 rounded-md relative group text-gray-50`}
                   >
                     <Play size={24} />
-                    <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                    <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50">
                       Bắt đầu ghi âm
                     </span>
                   </button>
@@ -1394,7 +1396,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                     className={`flex items-center gap-2 p-2 rounded-md relative group text-gray-50`}
                   >
                     <Pause size={24} />
-                    <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                    <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50">
                       Kết thúc ghi âm
                     </span>
                   </button>
@@ -1409,7 +1411,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                       size={24}
                       className="animate-pulse duration-200"
                     />
-                    <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                    <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50">
                       Cuộc họp đang được ghi lại
                     </span>
                   </button>
@@ -1420,7 +1422,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                   className={`flex items-center gap-2 p-2 rounded-md relative group text-gray-50`}
                 >
                   <LucideMicOff size={24} />
-                  <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                  <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50">
                     Tắt tất cả mic
                   </span>
                 </button>
@@ -1432,7 +1434,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                 } `}
               >
                 <LucideHand size={24} />
-                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50">
                   Giơ tay
                 </span>
               </button>
@@ -1447,7 +1449,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
               >
                 <span className="absolute top-2 right-2 bg-red-600 h-2.5 w-2.5 rounded-full"></span>
                 <LucideMessageCircleMore size={24} />
-                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50">
                   Nhắn tin
                 </span>
               </button>
@@ -1469,7 +1471,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                   {takeHands.length > 0 ? takeHands.length : ""}
                 </span>
                 <LucideUsersRound size={24} />
-                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 text-gray-300">
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50 text-gray-300">
                   Danh sách người tham gia
                 </span>
               </button>
@@ -1483,7 +1485,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                 } `}
               >
                 {muted ? <LucideMicOff size={24} /> : <LucideMic size={24} />}
-                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 text-gray-50">
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50 text-gray-50">
                   {muted ? "Bật mic" : "Tắt mic"}
                 </span>
               </button>
@@ -1499,7 +1501,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                 ) : (
                   <LucideVideo size={24} />
                 )}
-                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50">
                   {videoOff ? "Bật camera" : "Tắt camera"}
                 </span>
               </button>
@@ -1520,7 +1522,7 @@ const VideoRoom: React.FC<VideoRoomProps> = ({
                 }`}
               >
                 <LucideScreenShare size={24} />
-                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2">
+                <span className="absolute top-full hidden group-hover:block whitespace-nowrap left-1/2 -translate-x-1/2 z-50">
                   {currentScreenSharer !== null &&
                   currentScreenSharer !== me.peerId
                     ? "Người khác đang chia sẻ màn hình"

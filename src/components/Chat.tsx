@@ -9,6 +9,8 @@ import { MemberType } from "../interface/member";
 import { ROLE_MEETING } from "../constants/meeting";
 import { encryptFile, encryptText } from "../utils/aes";
 import { useSocket } from "../context/SocketContext";
+import { saveChat } from "../services/chatService";
+import { SignalMessage } from "../interface/websocket";
 
 export const ChatComponent = ({
   chats,
@@ -33,7 +35,7 @@ export const ChatComponent = ({
     }
   }, [chats]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (message.trim() === "" && !file) {
       return;
     }
@@ -92,20 +94,28 @@ export const ChatComponent = ({
           messageToSend,
           import.meta.env.VITE_AES_KEY
         );
-        sendSignal(
-          {
-            type: "chat",
-            from: member.employeeCode + "",
-            to: meetingCode,
-            member: member,
-            payload: {
-              type: type,
-              message: messageToSend,
-              timestamp: new Date().toISOString(),
-            },
+        const SignalChat: SignalMessage = {
+          type: "chat",
+          from: member.employeeCode + "",
+          to: meetingCode,
+          member: member,
+          payload: {
+            type: type,
+            message: messageToSend,
+            timestamp: new Date().toISOString(),
           },
-          meetingCode
-        );
+        };
+        sendSignal(SignalChat, meetingCode);
+        await saveChat({
+          id: new Date().getTime(),
+          sender: SignalChat.from,
+          receiver: SignalChat.to,
+          message: SignalChat.payload.message,
+          type: SignalChat.payload.type,
+          timestamp: SignalChat.payload.timestamp,
+        } as ChatType).catch((error) => {
+          console.error("Error saving chat:", error);
+        });
       }
 
       // Clear input after sending

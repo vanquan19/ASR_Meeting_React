@@ -442,13 +442,6 @@ const ChatMeetingTab = ({
             );
             chat.message = decryptedText;
             setChats((prev) => (prev ? [...prev, chat] : [chat]));
-            await saveChat({
-              ...chat,
-              sender: signal.from,
-              message: signal.payload.message,
-            }).catch((error) => {
-              console.error("Error saving chat:", error);
-            });
           }
         }
       );
@@ -479,7 +472,7 @@ const ChatMeetingTab = ({
     fetchChat();
   }, [meetingCode]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (message.trim() === "" && !file) {
       return;
     }
@@ -538,20 +531,29 @@ const ChatMeetingTab = ({
           messageToSend,
           import.meta.env.VITE_AES_KEY
         );
-        sendSignal(
-          {
-            type: "chat",
-            from: me.employeeCode + "",
-            to: meetingCode,
-            member: me,
-            payload: {
-              type: type,
-              message: messageToSend,
-              timestamp: new Date().toISOString(),
-            },
+        const SignalChat: SignalMessage = {
+          type: "chat",
+          from: me.employeeCode + "",
+          to: meetingCode,
+          member: me,
+          payload: {
+            type: type,
+            message: messageToSend,
+            timestamp: new Date().toISOString(),
           },
-          meetingCode
-        );
+        };
+        sendSignal(SignalChat, meetingCode);
+
+        await saveChat({
+          id: new Date().getTime(),
+          sender: SignalChat.from,
+          receiver: SignalChat.to,
+          message: SignalChat.payload.message,
+          type: SignalChat.payload.type,
+          timestamp: SignalChat.payload.timestamp,
+        } as ChatType).catch((error) => {
+          console.error("Error saving chat:", error);
+        });
       }
 
       // Clear input after sending
